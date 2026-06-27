@@ -1106,6 +1106,13 @@ function handle(msg) {
     return;
   }
 
+  if (msg.type === 'prompt_update') {
+    const idx = PROMPTS.findIndex(p => p.id === msg.prompt.id);
+    if (idx !== -1) PROMPTS[idx] = msg.prompt;
+    renderPrompts(PROMPTS);
+    return;
+  }
+
   if (msg.type === 'prompt_delete') {
     PROMPTS = PROMPTS.filter(p => p.id !== msg.id);
     renderPrompts(PROMPTS);
@@ -1425,10 +1432,10 @@ function togglePromptDone(id, e) {
   const p = PROMPTS.find(x => x.id === id);
   if (!p) return;
   p.done = !p.done;
-  fetch('/prompts/add', {
-    method: 'POST',
+  fetch(`/prompts/${id}`, {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...p })
+    body: JSON.stringify({ done: p.done })
   });
   renderPrompts(PROMPTS);
 }

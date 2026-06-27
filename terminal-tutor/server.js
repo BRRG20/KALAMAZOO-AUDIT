@@ -367,6 +367,16 @@ app.post('/prompts/add', (req, res) => {
   res.json({ ok: true, prompt: entry });
 });
 
+app.patch('/prompts/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const p = savedPrompts.find(x => x.id === id);
+  if (!p) return res.status(404).json({ error: 'not found' });
+  Object.assign(p, req.body);
+  savePrompts();
+  broadcast({ type: 'prompt_update', prompt: p });
+  res.json({ ok: true, prompt: p });
+});
+
 app.delete('/prompts/:id', (req, res) => {
   const id = Number(req.params.id);
   savedPrompts = savedPrompts.filter(p => p.id !== id);
