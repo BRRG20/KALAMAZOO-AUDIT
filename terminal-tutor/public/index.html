@@ -156,6 +156,10 @@ body {
   overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; max-width: 220px;
 }
+.card-section { margin: 8px 0 0; }
+.card-section:first-child { margin-top: 0; }
+.sec-head { font-size: 11px; font-weight: 700; display: block; margin-bottom: 3px; }
+.sec-body { font-size: 12px; color: var(--text-dim); line-height: 1.6; padding-left: 2px; user-select: text; }
 .card-num { font-family: var(--mono); font-size: 9px; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; flex-shrink: 0; }
 .prompt-char { color: var(--text-muted); font-family: var(--mono); font-size: 11px; }
 
@@ -1058,8 +1062,9 @@ document.addEventListener('mouseup', () => { dragging = false; document.body.sty
 // ── WEBSOCKET + STREAMING ────────────────────────────────────────────────────
 let ws, reconnTimer;
 let cmdCount = 0;
-let activeCard = null; // the card currently streaming into
-let activeCursor = null;
+let activeCard = null;
+let streamBuffer = '';
+let renderPending = false;
 
 function connect() {
   ws = new WebSocket('ws://localhost:3737');
@@ -1162,30 +1167,33 @@ function handle(msg) {
 
     // Set up streaming target
     activeCard = { id: cmdCount, isQ };
-    activeCursor = document.createElement('span');
-    activeCursor.className = 'cursor';
-    document.getElementById(`body-${cmdCount}`).appendChild(activeCursor);
+    streamBuffer = '';
+    renderPending = false;
     document.getElementById('footer-msg').textContent = 'Explaining…';
     return;
   }
 
-  // Streaming chunk — append text before cursor
+  // Streaming chunk — buffer and re-render via rAF
   if (msg.type === 'chunk' && activeCard) {
-    const body = document.getElementById(`body-${activeCard.id}`);
-    if (!body) return;
-    const txt = document.createTextNode(msg.text);
-    body.insertBefore(txt, activeCursor);
-    smartScroll();
+    streamBuffer += msg.text;
+    if (!renderPending) {
+      renderPending = true;
+      requestAnimationFrame(() => {
+        const body = document.getElementById(`body-${activeCard?.id}`);
+        if (body) body.innerHTML = renderMarkdown(streamBuffer) + '<span class="cursor"></span>';
+        renderPending = false;
+        smartScroll();
+      });
+    }
     return;
   }
 
-  // Done — remove cursor, format body, update badge
+  // Done — final render
   if (msg.type === 'done' && activeCard) {
-    if (activeCursor && activeCursor.parentNode) activeCursor.remove();
-    activeCursor = null;
-
+    renderPending = false;
     const doneBody = document.getElementById(`body-${activeCard.id}`);
-    if (doneBody) doneBody.innerHTML = renderMarkdown(doneBody.textContent);
+    if (doneBody) doneBody.innerHTML = renderMarkdown(streamBuffer);
+    streamBuffer = '';
 
     const badge = document.getElementById(`exit-${activeCard.id}`);
     if (badge && msg.exitCode !== undefined) {
@@ -1213,26 +1221,53 @@ function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function renderMarkdown(raw) {
-  let h = raw
+const SEC_DEFS = [
+  { emoji: '⚡',  color: 'var(--text)'   },
+  { emoji: '📖',  color: 'var(--purple)' },
+  { emoji: '✅',  color: 'var(--green)'  },
+  { emoji: '❌',  color: 'var(--red)'    },
+  { emoji: '💡',  color: 'var(--amber)'  },
+  { emoji: '🔐',  color: 'var(--red)'    },
+  { emoji: '➡️', color: 'var(--blue)'   },
+];
+
+function formatInline(text) {
+  return text
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`\n]+)`/g, '<code class="inline-code">$1</code>');
+    .replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/`([^`\n]+)`/g,'<code class="inline-code">$1</code>');
+}
 
-  const sections = [
-    [/^(⚡[^\n]+)/gm,  'var(--text)',   '700'],
-    [/^(📖[^\n]+)/gm,  'var(--purple)', '700'],
-    [/^(✅[^\n]+)/gm,  'var(--green)',  '700'],
-    [/^(❌[^\n]+)/gm,  'var(--red)',    '700'],
-    [/^(💡[^\n]+)/gm,  'var(--amber)',  '700'],
-    [/^(🔐[^\n]+)/gm,  'var(--red)',    '700'],
-    [/^(➡️[^\n]+)/gm, 'var(--blue)',   '700'],
-  ];
-  sections.forEach(([re, color, weight]) => {
-    h = h.replace(re, `<span class="sec-head" style="color:${color};font-weight:${weight}">$1</span>`);
-  });
+function renderMarkdown(raw) {
+  // Split into lines, group by section headers
+  const lines = raw.split('\n');
+  const blocks = [];
+  let current = null;
 
-  return h.replace(/\n/g, '<br>');
+  for (const line of lines) {
+    const def = SEC_DEFS.find(s => line.trimStart().startsWith(s.emoji));
+    if (def) {
+      if (current) blocks.push(current);
+      current = { color: def.color, header: line.trim(), body: [] };
+    } else if (current) {
+      current.body.push(line);
+    } else {
+      blocks.push({ color: null, header: null, body: [line] });
+    }
+  }
+  if (current) blocks.push(current);
+
+  return blocks.map(b => {
+    if (b.header) {
+      const bodyHtml = b.body.filter(l => l.trim()).map(l => formatInline(l)).join('<br>');
+      return `<div class="card-section">` +
+        `<div class="sec-head" style="color:${b.color}">${formatInline(b.header)}</div>` +
+        (bodyHtml ? `<div class="sec-body">${bodyHtml}</div>` : '') +
+        `</div>`;
+    }
+    const bodyHtml = b.body.filter(l => l.trim()).map(l => formatInline(l)).join('<br>');
+    return bodyHtml ? `<div class="sec-body">${bodyHtml}</div>` : '';
+  }).join('');
 }
 
 // ── ASK ──────────────────────────────────────────────────────────────────────
