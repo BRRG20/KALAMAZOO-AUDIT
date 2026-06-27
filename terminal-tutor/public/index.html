@@ -97,9 +97,13 @@ body {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   background: var(--bg);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+#tabs::-webkit-scrollbar { display: none; }
 .tab {
-  flex: 1; padding: 9px 4px;
+  flex: 0 0 auto; padding: 9px 12px;
   font-size: 10px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.5px;
   color: var(--text-muted);
@@ -107,6 +111,7 @@ body {
   text-align: center;
   border-bottom: 2px solid transparent;
   transition: all 0.15s;
+  white-space: nowrap;
 }
 .tab:hover { color: var(--text-dim); }
 .tab.active { color: var(--purple); border-bottom-color: var(--purple); }
@@ -350,7 +355,7 @@ body {
 }
 
 /* ── PROMPTS TAB ── */
-#prompts-panel { display: flex; flex-direction: column; overflow: hidden; }
+#prompts-panel { flex-direction: column; overflow: hidden; }
 #prompts-toolbar { display: flex; gap: 6px; padding: 10px 14px 0; flex-shrink: 0; }
 #prompts-toolbar input, #prompts-toolbar select {
   background: var(--surface2); border: 1px solid var(--border2); border-radius: 8px;
