@@ -356,12 +356,6 @@ body {
 
 /* ── PROMPTS TAB ── */
 #prompts-panel { flex-direction: column; overflow: hidden; }
-#prompts-toolbar { display: flex; gap: 6px; padding: 10px 14px 0; flex-shrink: 0; }
-#prompts-toolbar input, #prompts-toolbar select {
-  background: var(--surface2); border: 1px solid var(--border2); border-radius: 8px;
-  color: var(--text); padding: 5px 9px; font-size: 11px; outline: none;
-}
-#prompts-toolbar input { flex: 1; }
 #prompts-add { padding: 8px 14px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
 #prompt-input {
   width: 100%; background: var(--surface2); border: 1px solid var(--border2);
@@ -490,15 +484,6 @@ body {
 
   <!-- PROMPTS -->
   <div class="tp" id="prompts-panel">
-    <div id="prompts-toolbar">
-      <input id="prompt-search" placeholder="Search prompts…" oninput="filterPrompts(this.value)">
-      <select id="prompt-tag-filter" onchange="filterPrompts(document.getElementById('prompt-search').value)">
-        <option value="">All tags</option>
-        <option value="Security">Security</option>
-        <option value="Feature">Feature</option>
-        <option value="General">General</option>
-      </select>
-    </div>
     <div id="prompts-add">
       <textarea id="prompt-input" placeholder="Paste a prompt or suggestion to save…" rows="2"></textarea>
       <div id="prompts-add-row">
@@ -1341,23 +1326,15 @@ async function loadServerPrompts() {
 }
 
 function renderPrompts(list) {
-  const search = document.getElementById('prompt-search').value.toLowerCase();
-  const tag    = document.getElementById('prompt-tag-filter').value;
-  const filtered = list.filter(p => {
-    const matchTag  = !tag || p.tag === tag;
-    const matchText = !search || p.title.toLowerCase().includes(search) || p.text.toLowerCase().includes(search);
-    return matchTag && matchText;
-  });
-
   const el = document.getElementById('prompts-list');
   el.innerHTML = '';
 
-  if (!filtered.length) {
+  if (!list.length) {
     el.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:11px;padding:24px">No prompts yet — save one above</div>';
     return;
   }
 
-  filtered.forEach(p => {
+  list.forEach(p => {
     const div = document.createElement('div');
     div.className = 'prompt-item' + (p.done ? ' done' : '');
     div.id = `prompt-${p.id}`;
@@ -1386,7 +1363,6 @@ function renderPrompts(list) {
   tabEl.textContent = pending > 0 ? `📋 Prompts (${pending})` : '📋 Prompts';
 }
 
-function filterPrompts(val) { renderPrompts(PROMPTS); }
 
 async function addPrompt() {
   const text  = document.getElementById('prompt-input').value.trim();
