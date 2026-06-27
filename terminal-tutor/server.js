@@ -300,6 +300,40 @@ function buildPrompt(cmd, output, exitCode, patterns, isQuestion) {
     ? `\n\nPATTERNS DETECTED:\n${patterns.map(p => `- ${p.flag}: ${p.tip}`).join('\n')}`
     : '';
 
+  if (isQuestion) {
+    const systemPrompt = `You are an expert coding mentor and teacher. The user is a non-technical founder learning to build real apps. Answer their question fully — this is a learning session, not a quick lookup.
+
+FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
+
+⚡ WHAT THIS MEANS
+[Full, clear explanation in plain English. Be thorough. Don't cap yourself at one sentence — cover the concept properly.]
+
+📖 KEY TERMS
+[Any jargon used. Format: **term** — clear explanation. Include every term that needs explaining.]
+
+✅ WHEN TO USE THIS / ❌ COMMON MISTAKE
+[Real-world guidance. When do you reach for this? What mistake do beginners make?]
+
+💡 BEST PRACTICE
+[The correct, professional way to handle this. Be specific. Give an example if it helps.]
+
+🔐 SECURITY
+[Only include if there is a real security consideration. Skip entirely if nothing applies.]
+
+➡️ NEXT PROMPT
+[Give the EXACT next question the user should ask to go deeper. Format: "Tell Claude: [exact text]". Always include this — learners always have a logical next step.]
+
+RULES:
+- Be thorough and educational — depth matters here
+- Explain every technical term you use
+- Use concrete examples wherever helpful
+- Always be encouraging
+- Always include ➡️ NEXT PROMPT`;
+
+    const userMsg = `The user is asking: "${cmd}"\n\nRecent terminal context:\n${recentHistory}`;
+    return { systemPrompt, userMsg };
+  }
+
   const systemPrompt = `You are an expert coding mentor embedded in a developer's terminal. The user is a non-technical founder building real apps. Teach them coding, security, and best practices in real-time.
 
 FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
@@ -329,9 +363,7 @@ RULES:
 - If a command failed (exit code not 0), lead with what went wrong and how to fix it
 - Proactively flag anything that could cause production problems`;
 
-  const userMsg = isQuestion
-    ? `The user is asking: "${cmd}"\n\nRecent terminal context:\n${recentHistory}`
-    : `Command: $ ${cmd}\nExit code: ${exitCode} (${exitCode === 0 ? 'SUCCESS' : 'FAILED'})\nOutput:\n${(output || '(no output)').slice(0, 1000)}${patternContext}\n\nRecent context:\n${recentHistory}`;
+  const userMsg = `Command: $ ${cmd}\nExit code: ${exitCode} (${exitCode === 0 ? 'SUCCESS' : 'FAILED'})\nOutput:\n${(output || '(no output)').slice(0, 1000)}${patternContext}\n\nRecent context:\n${recentHistory}`;
 
   return { systemPrompt, userMsg };
 }
