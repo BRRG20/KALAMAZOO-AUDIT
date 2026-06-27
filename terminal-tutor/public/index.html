@@ -151,6 +151,7 @@ body {
   overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; max-width: 220px;
 }
+.card-num { font-family: var(--mono); font-size: 9px; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; flex-shrink: 0; }
 .prompt-char { color: var(--text-muted); font-family: var(--mono); font-size: 11px; }
 
 .badge {
@@ -1050,6 +1051,7 @@ function handle(msg) {
 
     card.innerHTML = `
       <div class="card-head">
+        <span class="card-num">#${cmdCount}</span>
         <span class="prompt-char">${isQ ? '💬' : '$'}</span>
         <span class="cmd-text">${esc(msg.label)}</span>
         ${exitBadge}
@@ -1181,7 +1183,7 @@ function nudgeOrScroll() {
   }
   if (!following) {
     pendingCount++;
-    document.getElementById('new-msg-count').textContent = pendingCount;
+    document.getElementById('new-msg-count').textContent = `${pendingCount} (#${cmdCount})`;
     document.getElementById('new-msg-btn').style.display = 'block';
   } else {
     smartScroll();
