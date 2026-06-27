@@ -339,7 +339,7 @@ RULES:
 FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
 
 ⚡ WHAT JUST HAPPENED
-[Describe what the command or terminal process DID. Write in third person about the command itself — not about the user. e.g. "npm install downloaded all packages listed in package.json into node_modules/" — NOT "You installed packages". Be specific about what happened technically.]
+[Describe what the command or terminal process DID in plain English — as if explaining to a smart non-developer. Write in third person about the command itself, not about the user. Be specific and thorough, but use layman's terms. e.g. "npm install reached out to the npm registry, downloaded every package listed in package.json, and placed them inside a node_modules/ folder so the app can use them." — NOT "You installed packages".]
 
 📖 KEY TERMS
 [Include every term the user needs to understand this output. No cap on number. Format: **term** — clear explanation of what it is and why it matters. Skip only if there is genuinely no jargon.]
