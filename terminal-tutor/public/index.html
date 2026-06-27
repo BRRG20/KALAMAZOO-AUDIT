@@ -729,7 +729,8 @@ body {
       <div class="sec-tool-block">
         <div class="sec-tool-head">🔐 Supabase RLS Scanner</div>
         <p class="sec-tool-desc">Checks every public table for: RLS disabled, zero policies, or USING (true) open access. Runs automatically when you push migrations. Also callable from terminal: <code class="inline-code">scan-rls</code></p>
-        <div class="sec-tool-inputs">
+        <div id="supa-cred-status" style="font-size:10px;color:var(--text-muted);margin-bottom:8px"></div>
+        <div id="supa-manual-inputs" class="sec-tool-inputs" style="display:none">
           <input id="supa-url" placeholder="https://xxxx.supabase.co" />
           <input id="supa-key" type="password" placeholder="service_role key" />
         </div>
@@ -775,13 +776,17 @@ body {
           <div class="sec-check">✅ Public S3 bucket ACL</div>
           <div class="sec-check">⚡ Auth file changes → instant Claude security review</div>
           <div class="sec-check">⚡ npm install → supply chain risk alert</div>
+          <div class="sec-check">✅ JWT signed without expiry / algorithm set to "none"</div>
+          <div class="sec-check">✅ CORS wildcard origin — <code class="inline-code">cors()</code> or <code class="inline-code">origin: '*'</code></div>
+          <div class="sec-check">✅ SQL injection — template literals and string concat in queries</div>
+          <div class="sec-check">✅ OAuth redirect_uri taken from user input without validation</div>
         </div>
         <div class="sec-not-yet">
-          <div class="sec-check-label">Not yet (coming soon):</div>
-          <div class="sec-check sec-dim">○ JWT expiry and rotation checks</div>
-          <div class="sec-check sec-dim">○ CORS misconfiguration detection</div>
-          <div class="sec-check sec-dim">○ SQL injection in raw query strings</div>
-          <div class="sec-check sec-dim">○ Broken OAuth redirect URI validation</div>
+          <div class="sec-check-label">Not yet:</div>
+          <div class="sec-check sec-dim">○ JWT rotation enforcement (refresh token reuse detection)</div>
+          <div class="sec-check sec-dim">○ Rate limiting missing on auth endpoints</div>
+          <div class="sec-check sec-dim">○ Insecure cookie flags (missing HttpOnly / Secure / SameSite)</div>
+          <div class="sec-check sec-dim">○ SSRF — user-controlled URLs passed to fetch/axios</div>
         </div>
       </div>
 
@@ -1131,6 +1136,8 @@ async function loadServerGlossary() {
 loadServerGlossary();
 
 // ── TABS ─────────────────────────────────────────────────────────────────────
+document.querySelector('[data-tab="security"]').addEventListener('click', loadSecurityConfig);
+
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -1610,13 +1617,37 @@ function sendPromptToAsk(id, e) {
 }
 
 // ── SECURITY TOOLS ───────────────────────────────────────────────────────────
+let _supaConfig = {};
+
+async function loadSecurityConfig() {
+  try {
+    const cfg = await fetch('/config').then(r => r.json());
+    _supaConfig = cfg;
+    const statusEl = document.getElementById('supa-cred-status');
+    const inputEl  = document.getElementById('supa-manual-inputs');
+    if (cfg.supabaseUrl && cfg.hasServiceKey) {
+      statusEl.innerHTML = `✅ Using credentials from environment — <code class="inline-code">SUPABASE_URL</code> + <code class="inline-code">SUPABASE_SERVICE_KEY</code>`;
+      inputEl.style.display = 'none';
+    } else {
+      statusEl.innerHTML = `<span style="color:var(--amber)">⚠ No Supabase env vars found. Enter manually or add to your .env file.</span>`;
+      inputEl.style.display = 'flex';
+    }
+    if (cfg.projectPath) {
+      const wp = document.getElementById('watch-path');
+      const sp = document.getElementById('scan-path');
+      if (wp && !wp.value) wp.value = cfg.projectPath;
+      if (sp && !sp.value) sp.value = cfg.projectPath;
+    }
+  } catch {}
+}
+
 async function runRlsScan() {
-  const url = document.getElementById('supa-url').value.trim();
-  const key = document.getElementById('supa-key').value.trim();
+  const url = document.getElementById('supa-url')?.value.trim() || '';
+  const key = document.getElementById('supa-key')?.value.trim() || '';
   const el  = document.getElementById('rls-results');
   el.innerHTML = '<span style="color:var(--text-muted)">Scanning…</span>';
   try {
-    const res  = await fetch('/scan-rls', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ supabaseUrl: url, serviceKey: key }) });
+    const res  = await fetch('/scan-rls', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ supabaseUrl: url || undefined, serviceKey: key || undefined }) });
     const data = await res.json();
     renderRlsResults(data, el);
   } catch (e) { el.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`; }
@@ -1640,8 +1671,10 @@ async function runSecretScan() {
     const res  = await fetch('/scan-secrets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ path: scanPath }) });
     const data = await res.json();
     if (!data.findings.length) { el.innerHTML = '<div style="color:var(--green);font-weight:600">✅ No secrets found in scanned files.</div>'; return; }
-    el.innerHTML = `<div style="color:var(--red);font-weight:700;margin-bottom:6px">🚨 ${data.findings.length} potential secret(s) found</div>` +
-      data.findings.map(f => `<div class="secret-hit"><div class="secret-label">${esc(f.label)}</div><div class="secret-file">${esc(f.file)}</div></div>`).join('');
+    const critical = data.findings.filter(f => f.severity === 'critical');
+    const high     = data.findings.filter(f => f.severity === 'high');
+    el.innerHTML = `<div style="color:var(--red);font-weight:700;margin-bottom:6px">🚨 ${data.findings.length} issue(s) — ${critical.length} critical, ${high.length} high</div>` +
+      data.findings.map(f => `<div class="secret-hit" style="${f.severity==='high' ? 'border-left-color:var(--amber)' : ''}"><div class="secret-label" style="${f.severity==='high' ? 'color:var(--amber)' : ''}">${esc(f.label)}</div><div class="secret-file">${esc(f.file)}</div></div>`).join('');
   } catch (e) { el.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`; }
 }
 

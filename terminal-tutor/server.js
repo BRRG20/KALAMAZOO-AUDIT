@@ -449,6 +449,15 @@ app.delete('/prompts/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── CONFIG (exposes non-secret env info to frontend) ─────────────────────────
+app.get('/config', (req, res) => {
+  res.json({
+    supabaseUrl:    process.env.SUPABASE_URL    || null,
+    hasServiceKey:  !!process.env.SUPABASE_SERVICE_KEY,
+    projectPath:    process.env.PROJECT_PATH    || null,
+  });
+});
+
 // ── RLS SCANNER ──────────────────────────────────────────────────────────────
 app.post('/scan-rls', async (req, res) => {
   const url   = req.body.supabaseUrl  || process.env.SUPABASE_URL;
@@ -525,13 +534,29 @@ app.post('/scan-secrets', (req, res) => {
   const projectPath = req.body.path || process.env.PROJECT_PATH || process.cwd();
   const findings = [];
   const dangerPatterns = [
-    { re: /sk-[a-zA-Z0-9]{40,}/g,                       label: 'OpenAI API key' },
-    { re: /sk-ant-[a-zA-Z0-9\-_]{90,}/g,                label: 'Anthropic API key' },
-    { re: /eyJ[a-zA-Z0-9_-]{50,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/g, label: 'JWT token' },
-    { re: /AKIA[A-Z0-9]{16}/g,                           label: 'AWS Access Key ID' },
-    { re: /service_role[^a-z].*eyJ/g,                    label: 'Supabase service role key' },
-    { re: /password\s*=\s*["'][^"']{6,}/gi,              label: 'Hardcoded password' },
-    { re: /api.?key\s*[=:]\s*["'][a-zA-Z0-9_\-]{16,}/gi, label: 'Hardcoded API key' },
+    // Secrets
+    { re: /sk-[a-zA-Z0-9]{40,}/g,                        label: 'OpenAI API key',            severity: 'critical' },
+    { re: /sk-ant-[a-zA-Z0-9\-_]{90,}/g,                 label: 'Anthropic API key',         severity: 'critical' },
+    { re: /eyJ[a-zA-Z0-9_-]{50,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/g, label: 'Hardcoded JWT token', severity: 'critical' },
+    { re: /AKIA[A-Z0-9]{16}/g,                            label: 'AWS Access Key ID',         severity: 'critical' },
+    { re: /service_role[^a-z].*eyJ/g,                     label: 'Supabase service role key', severity: 'critical' },
+    { re: /password\s*=\s*["'][^"']{6,}/gi,               label: 'Hardcoded password',        severity: 'critical' },
+    { re: /api.?key\s*[=:]\s*["'][a-zA-Z0-9_\-]{16,}/gi, label: 'Hardcoded API key',         severity: 'critical' },
+    // JWT misconfig
+    { re: /jwt\.sign\s*\([^)]*\)\s*(?!.*expiresIn)/gs,   label: 'JWT signed without expiry (expiresIn missing)', severity: 'high' },
+    { re: /algorithm\s*:\s*["']none["']/gi,               label: 'JWT algorithm set to "none" — verification bypassed', severity: 'critical' },
+    { re: /jwt\.verify\s*\([^,)]+,[^,)]+\)/g,            label: 'JWT verify missing options (check expiry enforcement)', severity: 'high' },
+    // CORS misconfig
+    { re: /origin\s*:\s*["']\*["']/g,                     label: 'CORS wildcard origin (*) — allows any site to call your API', severity: 'high' },
+    { re: /Access-Control-Allow-Origin['":\s]+\*/g,        label: 'CORS wildcard header set in code', severity: 'high' },
+    { re: /cors\(\s*\)/g,                                  label: 'cors() called with no options — defaults to wildcard', severity: 'high' },
+    // SQL injection
+    { re: /`\s*(SELECT|INSERT|UPDATE|DELETE|DROP)[^`]*\$\{/gi, label: 'SQL injection risk — template literal in SQL query', severity: 'critical' },
+    { re: /query\s*\(\s*[`"']?\s*(SELECT|INSERT|UPDATE|DELETE)[^`"']*\+\s*[a-zA-Z]/gi, label: 'SQL injection risk — string concatenation in query', severity: 'critical' },
+    { re: /\.raw\s*\([^)]*\$\{/g,                         label: 'SQL injection risk — raw query with interpolation', severity: 'critical' },
+    // OAuth redirect URI
+    { re: /redirect_uri\s*[:=]\s*req\.(query|body|params)/gi, label: 'OAuth redirect_uri taken directly from user input — open redirect risk', severity: 'critical' },
+    { re: /callback.*url.*=.*req\.(query|body)/gi,         label: 'OAuth callback URL from user input without validation', severity: 'high' },
   ];
   const ignoreDirs = new Set(['node_modules', '.git', '.next', 'dist', 'build', '__pycache__']);
   const ignoreFiles = new Set(['.env', '.env.local', '.env.example']);
@@ -553,7 +578,7 @@ app.post('/scan-secrets', (req, res) => {
         if (re.test(content)) {
           const relPath = path.relative(projectPath, full);
           if (!findings.some(f => f.file === relPath && f.label === label)) {
-            findings.push({ file: relPath, label, severity: 'critical' });
+            findings.push({ file: relPath, label, severity: severity || 'critical' });
           }
         }
       });
