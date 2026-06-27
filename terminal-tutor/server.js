@@ -21,6 +21,14 @@ function saveGlossary() {
   fs.writeFileSync(GLOSSARY_FILE, JSON.stringify(learnedGlossary, null, 2));
 }
 
+const PROMPTS_FILE = path.join(__dirname, 'prompts.json');
+let savedPrompts = [];
+try { savedPrompts = JSON.parse(fs.readFileSync(PROMPTS_FILE, 'utf8')); } catch { savedPrompts = []; }
+
+function savePrompts() {
+  fs.writeFileSync(PROMPTS_FILE, JSON.stringify(savedPrompts, null, 2));
+}
+
 function extractAndSaveTerms(text) {
   const regex = /\*\*([^*\n]{2,60})\*\*\s*[—\-–:]\s*([^\n]{10,250})/g;
   let match;
@@ -343,6 +351,26 @@ app.post('/glossary/add', (req, res) => {
     saveGlossary();
     broadcast({ type: 'glossary_add', terms: [entry] });
   }
+  res.json({ ok: true });
+});
+
+app.get('/prompts', (req, res) => res.json(savedPrompts));
+
+app.post('/prompts/add', (req, res) => {
+  const { title, text, tag } = req.body;
+  if (!text) return res.status(400).json({ error: 'text required' });
+  const entry = { id: Date.now(), title: title || text.slice(0, 50), text, tag: tag || 'General', ts: Date.now() };
+  savedPrompts.unshift(entry);
+  savePrompts();
+  broadcast({ type: 'prompt_add', prompt: entry });
+  res.json({ ok: true, prompt: entry });
+});
+
+app.delete('/prompts/:id', (req, res) => {
+  const id = Number(req.params.id);
+  savedPrompts = savedPrompts.filter(p => p.id !== id);
+  savePrompts();
+  broadcast({ type: 'prompt_delete', id });
   res.json({ ok: true });
 });
 

@@ -1,3 +1,5 @@
 node_modules/
 .DS_Store
 *.log
+glossary.json
+prompts.json
