@@ -48,6 +48,20 @@ function extractAndSaveTerms(text) {
   }
 }
 
+function extractAndSaveNextPrompt(text) {
+  // Pull out the "Tell Claude: ..." text from the ➡️ NEXT PROMPT section
+  const match = text.match(/➡️\s*NEXT PROMPT[\s\S]*?Tell Claude:\s*([^\n]+)/i);
+  if (!match) return;
+  const promptText = match[1].trim().replace(/^["']|["']$/g, '');
+  if (promptText.length < 10) return;
+  // Avoid saving duplicates
+  if (savedPrompts.some(p => p.text.toLowerCase() === promptText.toLowerCase())) return;
+  const entry = { id: Date.now(), title: promptText.slice(0, 60), text: promptText, tag: 'Auto', done: false, ts: Date.now() };
+  savedPrompts.unshift(entry);
+  savePrompts();
+  broadcast({ type: 'prompt_add', prompt: entry });
+}
+
 const PATTERNS = [
   {
     id: 'push-main',
@@ -284,6 +298,7 @@ async function streamClaude(systemPrompt, userMsg, onChunk, onDone) {
       }
     }
     extractAndSaveTerms(fullText);
+    extractAndSaveNextPrompt(fullText);
     onDone();
   } catch (err) {
     onChunk(`\nConnection error: ${err.message}`);

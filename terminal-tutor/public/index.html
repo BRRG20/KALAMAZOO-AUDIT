@@ -404,6 +404,7 @@ body {
 .ptag-Security { background: rgba(248,113,113,.15); color: var(--red); }
 .ptag-Feature  { background: rgba(144,112,255,.15); color: var(--purple); }
 .ptag-General  { background: rgba(96,165,250,.12);  color: var(--blue); }
+.ptag-Auto     { background: rgba(52,211,153,.12);  color: var(--green); }
 .prompt-text {
   font-size: 10px; color: var(--text-dim); line-height: 1.5;
   display: none; margin-top: 4px; user-select: text;
@@ -1278,12 +1279,32 @@ function renderMarkdown(raw) {
 }
 
 // ── ASK ──────────────────────────────────────────────────────────────────────
+function autoMarkPromptDone(questionText) {
+  const q = questionText.toLowerCase();
+  const words = q.split(/\s+/).filter(w => w.length > 4);
+  PROMPTS.forEach(p => {
+    if (p.done || p.tag !== 'Auto') return;
+    const pText = p.text.toLowerCase();
+    const matches = words.filter(w => pText.includes(w)).length;
+    if (matches >= 3 || pText.includes(q) || q.includes(pText.slice(0, 40))) {
+      p.done = true;
+      fetch(`/prompts/${p.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ done: true })
+      });
+    }
+  });
+  renderPrompts(PROMPTS);
+}
+
 async function sendQuestion() {
   const input = document.getElementById('q-input');
   const btn   = document.getElementById('ask-btn');
   const q = input.value.trim();
   if (!q || !ws || ws.readyState !== 1) return;
 
+  autoMarkPromptDone(q);
   btn.disabled = true; btn.textContent = 'Asking…';
   ws.send(JSON.stringify({ type: 'question', text: q }));
   input.value = '';
