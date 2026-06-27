@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Terminal Tutor</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --bg: #0c0c14;
+  --surface: #12121e;
+  --surface2: #1a1a28;
+  --border: #252535;
+  --border2: #2e2e45;
+  --purple: #9070ff;
+  --purple-dim: #6040cc;
+  --purple-glow: rgba(144,112,255,0.12);
+  --green: #34d399;
+  --amber: #fbbf24;
+  --red: #f87171;
+  --blue: #60a5fa;
+  --text: #e2e2f0;
+  --text-dim: #8080a8;
+  --text-muted: #4a4a6a;
+  --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── PANEL ── */
+#panel {
+  position: fixed;
+  top: 16px; right: 16px;
+  width: 420px;
+  height: calc(100vh - 32px);
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 1px rgba(144,112,255,0.08),
+    0 32px 80px rgba(0,0,0,0.7),
+    inset 0 1px 0 rgba(255,255,255,0.04);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 340px;
+  min-height: 400px;
+  resize: both;
+}
+
+/* ── HEADER ── */
+#header {
+  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: grab;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--surface2) 0%, var(--surface) 100%);
+  flex-shrink: 0;
+}
+#header:active { cursor: grabbing; }
+
+.dots { display:flex; gap:6px; }
+.dot { width:12px;height:12px;border-radius:50%; }
+.d1{background:#ff5f57;} .d2{background:#febc2e;} .d3{background:#28c840;}
+
+#brand {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--purple);
+  margin-left: -28px;
+}
+
+#ws-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #333;
+  transition: all 0.4s;
+  flex-shrink: 0;
+}
+#ws-dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+/* ── TABS ── */
+#tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg);
+}
+.tab {
+  flex: 1; padding: 9px 4px;
+  font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: center;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+}
+.tab:hover { color: var(--text-dim); }
+.tab.active { color: var(--purple); border-bottom-color: var(--purple); }
+
+/* ── PANELS ── */
+.tp { display: none; flex: 1; flex-direction: column; overflow: hidden; min-height: 0; }
+.tp.active { display: flex; }
+
+/* ── FEED ── */
+#feed {
+  flex: 1; overflow-y: auto;
+  padding: 12px; display: flex;
+  flex-direction: column; gap: 10px;
+  min-height: 0;
+}
+#feed::-webkit-scrollbar { width: 3px; }
+#feed::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* ── CARDS ── */
+.card {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  animation: fadeUp .25s ease;
+  flex-shrink: 0;
+}
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(6px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+/* Command header bar */
+.card-head {
+  padding: 8px 12px;
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.cmd-text {
+  font-family: var(--mono);
+  font-size: 11px; color: var(--blue);
+  overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; max-width: 220px;
+}
+.prompt-char { color: var(--text-muted); font-family: var(--mono); font-size: 11px; }
+
+.badge {
+  font-size: 9px; font-weight: 700; padding: 2px 6px;
+  border-radius: 4px; letter-spacing: 0.3px; flex-shrink: 0;
+}
+.badge-ok   { background: rgba(52,211,153,.15); color: var(--green); border: 1px solid rgba(52,211,153,.3); }
+.badge-fail { background: rgba(248,113,113,.15); color: var(--red);   border: 1px solid rgba(248,113,113,.3); }
+.badge-q    { background: var(--purple-glow);   color: var(--purple); border: 1px solid rgba(144,112,255,.3); }
+
+.card-time { font-size: 9px; color: var(--text-muted); margin-left: auto; flex-shrink: 0; }
+
+/* Card body — where streaming text appears */
+.card-body {
+  padding: 12px;
+  background: var(--surface);
+  font-size: 12.5px; line-height: 1.8;
+  color: var(--text-dim);
+  white-space: pre-wrap; word-break: break-word;
+  min-height: 20px;
+  user-select: text;
+}
+
+/* Inline streaming cursor */
+.cursor {
+  display: inline-block;
+  width: 2px; height: 14px;
+  background: var(--purple);
+  vertical-align: middle;
+  margin-left: 1px;
+  animation: blink .7s step-end infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* Pattern alert cards */
+.alert-card {
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px; line-height: 1.6;
+  animation: fadeUp .2s ease;
+  flex-shrink: 0;
+}
+.alert-danger  { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.3); color: var(--red); }
+.alert-warning { background: rgba(251,191,36,.07);  border: 1px solid rgba(251,191,36,.25); color: var(--amber); }
+.alert-info    { background: var(--purple-glow);    border: 1px solid rgba(144,112,255,.2); color: var(--purple); }
+
+.alert-flag { font-weight: 700; margin-bottom: 4px; }
+.alert-tip  { color: var(--text-dim); font-size: 11.5px; line-height: 1.6; user-select: text; }
+
+/* Welcome */
+.welcome-card {
+  background: linear-gradient(135deg, rgba(144,112,255,.08), rgba(96,64,204,.04));
+  border: 1px solid rgba(144,112,255,.2);
+  border-radius: 12px; padding: 18px; text-align: center;
+}
+.welcome-card .icon { font-size: 32px; margin-bottom: 10px; }
+.welcome-card h2 { font-size: 15px; font-weight: 700; color: var(--purple); margin-bottom: 6px; }
+.welcome-card p  { font-size: 12px; color: var(--text-muted); line-height: 1.7; }
+
+/* ── RENDERED CARD BODY ── */
+.card-body strong { color: var(--text); font-weight: 600; }
+.card-body .sec-head { display: block; margin-top: 10px; margin-bottom: 2px; font-size: 11px; letter-spacing: .2px; }
+.card-body .sec-head:first-child { margin-top: 0; }
+.inline-code { font-family: var(--mono); font-size: 10.5px; color: var(--blue); background: rgba(96,165,250,.08); padding: 1px 5px; border-radius: 4px; }
+
+/* ── ASK TAB ── */
+#ask-wrap {
+  display: flex; flex-direction: column;
+  padding: 12px; gap: 10px; flex: 1;
+}
+#ask-wrap p { font-size: 11px; color: var(--text-muted); line-height: 1.6; }
+#q-input {
+  flex: 1; min-height: 90px; max-height: 180px;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 10px; padding: 12px;
+  color: var(--text); font-size: 13px;
+  font-family: inherit; resize: none; outline: none;
+  transition: border-color .2s;
+  user-select: text;
+}
+#q-input:focus { border-color: rgba(144,112,255,.5); }
+#q-input::placeholder { color: var(--text-muted); }
+#ask-btn {
+  padding: 12px;
+  background: linear-gradient(135deg, var(--purple), var(--purple-dim));
+  border: none; border-radius: 10px;
+  color: white; font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: all .2s; letter-spacing: .3px;
+}
+#ask-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(144,112,255,.4); }
+#ask-btn:disabled { opacity: .5; transform: none; cursor: not-allowed; }
+.ask-hint { font-size: 10px; color: var(--text-muted); text-align: right; }
+
+/* ── GLOSSARY ── */
+#glos-search {
+  margin: 10px; padding: 8px 12px;
+  background: var(--bg); border: 1px solid var(--border2);
+  border-radius: 8px; color: var(--text); font-size: 12px;
+  outline: none; user-select: text;
+}
+#glos-search::placeholder { color: var(--text-muted); }
+#glos-list { flex: 1; overflow-y: auto; padding: 0 10px 10px; }
+.glos-item {
+  padding: 10px; border: 1px solid var(--border);
+  border-radius: 9px; margin-bottom: 7px;
+  background: var(--bg); cursor: pointer;
+  transition: border-color .15s;
+}
+.glos-item:hover { border-color: var(--border2); }
+.glos-term { font-family: var(--mono); font-size: 12px; color: var(--purple); font-weight: 600; margin-bottom: 3px; user-select: text; }
+.glos-def  { font-size: 11.5px; color: var(--text-dim); line-height: 1.55; user-select: text; }
+.glos-cat  { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+
+/* ── CAREER ── */
+#career-scroll { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.career-intro { font-size: 11.5px; color: var(--text-muted); line-height: 1.6; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; }
+.career-track { background: var(--bg); border: 1px solid var(--border2); border-radius: 10px; padding: 13px; display: flex; flex-direction: column; gap: 9px; }
+.career-track-header { display: flex; align-items: flex-start; gap: 10px; }
+.career-icon { font-size: 22px; line-height: 1; flex-shrink: 0; margin-top: 1px; }
+.career-title { font-size: 12.5px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+.career-sub { font-size: 10.5px; color: var(--text-muted); }
+.career-certs { display: flex; flex-wrap: wrap; gap: 5px; }
+.cert-badge { font-size: 9px; font-weight: 600; padding: 3px 7px; border-radius: 5px; letter-spacing: 0.2px; }
+.cert-orange { background: rgba(251,191,36,.12); color: var(--amber); border: 1px solid rgba(251,191,36,.25); }
+.cert-red    { background: rgba(248,113,113,.1); color: var(--red);   border: 1px solid rgba(248,113,113,.25); }
+.cert-green  { background: rgba(52,211,153,.1);  color: var(--green); border: 1px solid rgba(52,211,153,.25); }
+.cert-blue   { background: rgba(96,165,250,.1);  color: var(--blue);  border: 1px solid rgba(96,165,250,.25); }
+.cert-purple { background: var(--purple-glow);   color: var(--purple);border: 1px solid rgba(144,112,255,.25); }
+.career-skills { border-top: 1px solid var(--border); padding-top: 8px; }
+.career-skills-label { font-size: 9px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-bottom: 5px; }
+.career-skill-item { font-size: 11px; color: var(--text-dim); line-height: 1.7; }
+.career-skill-item code { font-family: var(--mono); font-size: 10px; color: var(--blue); background: rgba(96,165,250,.08); padding: 1px 4px; border-radius: 3px; }
+.career-path-label { font-size: 9px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); }
+.career-path { font-size: 10.5px; color: var(--text-dim); line-height: 1.6; }
+
+/* ── SETUP ── */
+#setup-scroll { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.setup-block {
+  background: var(--bg); border: 1px solid var(--border2);
+  border-radius: 10px; padding: 14px;
+}
+.setup-block h3 { font-size: 12px; color: var(--purple); font-weight: 700; margin-bottom: 8px; }
+.setup-block p  { font-size: 11.5px; color: var(--text-dim); line-height: 1.6; margin-bottom: 8px; }
+.code { 
+  background: #080810; border: 1px solid var(--border);
+  border-radius: 7px; padding: 10px 12px;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--blue); margin: 6px 0;
+  white-space: pre; overflow-x: auto;
+  user-select: text;
+}
+.setup-block .label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+
+/* ── NEW MESSAGE BUTTON ── */
+#new-msg-btn {
+  display: none;
+  position: absolute;
+  bottom: 12px; right: 12px;
+  background: var(--purple);
+  color: #fff;
+  border: none; border-radius: 20px;
+  padding: 7px 14px;
+  font-size: 11px; font-weight: 700;
+  cursor: pointer; z-index: 10;
+  box-shadow: 0 4px 18px rgba(144,112,255,.45);
+  animation: fadeUp .2s ease;
+  letter-spacing: .3px;
+}
+#new-msg-btn:hover { background: var(--purple-dim); }
+
+#back-btn {
+  display: none;
+  position: absolute;
+  bottom: 12px; left: 12px;
+  background: var(--surface2);
+  color: var(--text-dim);
+  border: 1px solid var(--border2); border-radius: 20px;
+  padding: 7px 13px;
+  font-size: 11px; font-weight: 600;
+  cursor: pointer; z-index: 10;
+  animation: fadeUp .2s ease;
+  letter-spacing: .2px;
+}
+#back-btn:hover { color: var(--text); border-color: var(--purple); }
+
+.tab-dot::after {
+  content: '';
+  display: inline-block;
+  width: 6px; height: 6px;
+  background: var(--purple);
+  border-radius: 50%;
+  margin-left: 4px;
+  vertical-align: middle;
+  box-shadow: 0 0 6px var(--purple);
+}
+
+/* ── FOOTER ── */
+#footer {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+#footer-msg  { font-size: 10px; color: var(--text-muted); }
+#footer-count{ font-size: 10px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div id="panel">
+
+  <div id="header">
+    <div class="dots"><div class="dot d1"></div><div class="dot d2"></div><div class="dot d3"></div></div>
+    <div id="brand">⚡ Terminal Tutor</div>
+    <div id="ws-dot"></div>
+  </div>
+
+  <div id="tabs">
+    <div class="tab active" data-tab="learn">📖 Learn</div>
+    <div class="tab" data-tab="ask">💬 Ask</div>
+    <div class="tab" data-tab="glossary">📚 Glossary</div>
+    <div class="tab" data-tab="career">🎓 Career</div>
+    <div class="tab" data-tab="setup">⚙️ Setup</div>
+  </div>
+
+  <!-- LEARN -->
+  <div class="tp active" id="learn-panel" style="position:relative;">
+    <div id="feed">
+      <div class="welcome-card">
+        <div class="icon">🎓</div>
+        <h2>Your personal coding mentor</h2>
+        <p>Every command you run gets explained here — live, word by word.<br><br>
+        You'll learn the jargon, the why, the best practice, and exactly what to do next. By the time your app is done, you'll think like a developer.</p>
+      </div>
+      <div class="setup-block" style="border-color:rgba(52,211,153,.2)">
+        <h3 style="color:var(--green)">📡 Quick connect</h3>
+        <div class="label">1. Start the server (in this folder)</div>
+        <div class="code">node server.js</div>
+        <div class="label">2. In your working terminal</div>
+        <div class="code">source /path/to/terminal-tutor/tutor.sh</div>
+        <p style="margin:0">Then just work normally. I'll explain everything as it happens.</p>
+      </div>
+    </div>
+    <button id="new-msg-btn" onclick="scrollToLatest()">▼ <span id="new-msg-count">1</span> new</button>
+    <button id="back-btn" onclick="returnToReading()">↑ back to reading</button>
+  </div>
+
+  <!-- ASK -->
+  <div class="tp" id="ask-panel">
+    <div id="ask-wrap">
+      <p>Ask anything — about a command, an error, a concept, or what to do next. I'll answer using the context of what you've been building.</p>
+      <textarea id="q-input" placeholder="e.g. Why should I use branches? What is a .env file? My npm install is failing — why?"></textarea>
+      <div class="ask-hint">⌘ + Enter to send</div>
+      <button id="ask-btn" onclick="sendQuestion()">Ask →</button>
+    </div>
+  </div>
+
+  <!-- GLOSSARY -->
+  <div class="tp" id="glossary-panel">
+    <input id="glos-search" placeholder="Search terms…" oninput="filterGlossary(this.value)">
+    <div id="glos-list"></div>
+  </div>
+
+  <!-- CAREER -->
+  <div class="tp" id="career-panel" style="overflow:hidden;">
+    <div id="career-scroll">
+
+      <div class="career-intro">
+        Every command you run maps to real job skills and certifications. Use this as your roadmap — you are building toward these tracks right now.
+      </div>
+
+      <div class="career-track">
+        <div class="career-track-header">
+          <span class="career-icon">💻</span>
+          <div>
+            <div class="career-title">Full-Stack Developer</div>
+            <div class="career-sub">Build complete web apps front to back</div>
+          </div>
+        </div>
+        <div class="career-certs">
+          <span class="cert-badge cert-blue">HTML &amp; CSS</span>
+          <span class="cert-badge cert-blue">JavaScript</span>
+          <span class="cert-badge cert-blue">React / Next.js</span>
+          <span class="cert-badge cert-blue">Node.js / Python</span>
+          <span class="cert-badge cert-blue">SQL</span>
+        </div>
+        <div class="career-skills">
+          <div class="career-skills-label">You are practicing this when you:</div>
+          <div class="career-skill-item">• Run <code>npm install</code>, <code>npm run dev</code></div>
+          <div class="career-skill-item">• Work with git branches and pull requests</div>
+          <div class="career-skill-item">• Build REST APIs and connect to databases</div>
+          <div class="career-skill-item">• Deploy apps to a live URL</div>
+        </div>
+      </div>
+
+      <div class="career-track">
+        <div class="career-track-header">
+          <span class="career-icon">⚙️</span>
+          <div>
+            <div class="career-title">Backend Engineer</div>
+            <div class="career-sub">Design APIs, databases, and server infrastructure</div>
+          </div>
+        </div>
+        <div class="career-certs">
+          <span class="cert-badge cert-blue">Node.js / Python</span>
+          <span class="cert-badge cert-blue">PostgreSQL / Redis</span>
+          <span class="cert-badge cert-blue">Docker</span>
+          <span class="cert-badge cert-blue">REST &amp; GraphQL</span>
+        </div>
+        <div class="career-skills">
+          <div class="career-skills-label">You are practicing this when you:</div>
+          <div class="career-skill-item">• Write or query databases with SQL</div>
+          <div class="career-skill-item">• Build and test API routes</div>
+          <div class="career-skill-item">• Run Docker containers locally</div>
+          <div class="career-skill-item">• Manage environment variables and secrets</div>
+        </div>
+      </div>
+
+      <div class="career-track">
+        <div class="career-track-header">
+          <span class="career-icon">☁️</span>
+          <div>
+            <div class="career-title">Cloud Engineer</div>
+            <div class="career-sub">Deploy and operate infrastructure on AWS / Azure</div>
+          </div>
+        </div>
+        <div class="career-certs">
+          <span class="cert-badge cert-orange">AWS Cloud Practitioner</span>
+          <span class="cert-badge cert-orange">AWS Solutions Architect</span>
+          <span class="cert-badge cert-orange">AWS Developer Associate</span>
+          <span class="cert-badge cert-purple">CompTIA Cloud+</span>
+          <span class="cert-badge cert-blue">AZ-900 Azure Fundamentals</span>
+          <span class="cert-badge cert-blue">AZ-104 Azure Admin</span>
+        </div>
+        <div class="career-skills">
+          <div class="career-skills-label">You are practicing this when you:</div>
+          <div class="career-skill-item">• Use the <code>aws</code> CLI or Terraform</div>
+          <div class="career-skill-item">• Deploy containers to ECS / EKS / AKS</div>
+          <div class="career-skill-item">• Configure IAM roles and security groups</div>
+          <div class="career-skill-item">• Set up CloudWatch monitoring and alerts</div>
+        </div>
+        <div class="career-path-label">Recommended order →</div>
+        <div class="career-path">Cloud Practitioner → Solutions Architect Associate → Developer Associate → DevOps Engineer</div>
+      </div>
+
+      <div class="career-track">
+        <div class="career-track-header">
+          <span class="career-icon">🔐</span>
+          <div>
+            <div class="career-title">Security Engineer</div>
+            <div class="career-sub">Protect systems, detect threats, respond to incidents</div>
+          </div>
+        </div>
+        <div class="career-certs">
+          <span class="cert-badge cert-red">CompTIA A+</span>
+          <span class="cert-badge cert-red">CompTIA Network+</span>
+          <span class="cert-badge cert-red">CompTIA Security+</span>
+          <span class="cert-badge cert-red">CompTIA CySA+</span>
+          <span class="cert-badge cert-red">CompTIA PenTest+</span>
+          <span class="cert-badge cert-red">ISC2 CISSP</span>
+        </div>
+        <div class="career-skills">
+          <div class="career-skills-label">You are practicing this when you:</div>
+          <div class="career-skill-item">• Store secrets in .env, not in code</div>
+          <div class="career-skill-item">• Use HTTPS and configure CORS correctly</div>
+          <div class="career-skill-item">• Run <code>npm audit</code> and patch vulnerabilities</div>
+          <div class="career-skill-item">• Avoid force push, rm -rf, chmod 777</div>
+          <div class="career-skill-item">• Set up authentication and authorization</div>
+        </div>
+        <div class="career-path-label">Recommended order →</div>
+        <div class="career-path">A+ → Network+ → Security+ → CySA+ → PenTest+ → CISSP (needs 5 yrs experience)</div>
+      </div>
+
+      <div class="career-track">
+        <div class="career-track-header">
+          <span class="career-icon">🤖</span>
+          <div>
+            <div class="career-title">AI / Cloud Engineer</div>
+            <div class="career-sub">Build and deploy AI-powered applications at scale</div>
+          </div>
+        </div>
+        <div class="career-certs">
+          <span class="cert-badge cert-green">AWS ML Specialty</span>
+          <span class="cert-badge cert-green">Google Cloud ML Engineer</span>
+          <span class="cert-badge cert-blue">AZ-204 Azure Developer</span>
+          <span class="cert-badge cert-green">TensorFlow Developer</span>
+        </div>
+        <div class="career-skills">
+          <div class="career-skills-label">You are practicing this when you:</div>
+          <div class="career-skill-item">• Call LLM APIs (Claude, OpenAI, Gemini)</div>
+          <div class="career-skill-item">• Build RAG pipelines with vector databases</div>
+          <div class="career-skill-item">• Deploy ML models as API endpoints</div>
+          <div class="career-skill-item">• Write Python for data processing and automation</div>
+          <div class="career-skill-item">• Monitor model performance and costs (LLMOps)</div>
+        </div>
+      </div>
+
+      <div class="career-track">
+        <div class="career-track-header">
+          <span class="career-icon">📊</span>
+          <div>
+            <div class="career-title">Data Scientist / Data Engineer</div>
+            <div class="career-sub">Analyse data and build ML pipelines</div>
+          </div>
+        </div>
+        <div class="career-certs">
+          <span class="cert-badge cert-green">Google Data Analytics</span>
+          <span class="cert-badge cert-green">IBM Data Science</span>
+          <span class="cert-badge cert-orange">AWS Data Analytics Specialty</span>
+          <span class="cert-badge cert-purple">CompTIA Data+</span>
+        </div>
+        <div class="career-skills">
+          <div class="career-skills-label">You are practicing this when you:</div>
+          <div class="career-skill-item">• Use Python with pandas and NumPy</div>
+          <div class="career-skill-item">• Write complex SQL queries and aggregations</div>
+          <div class="career-skill-item">• Work with Jupyter notebooks</div>
+          <div class="career-skill-item">• Build and evaluate scikit-learn models</div>
+        </div>
+      </div>
+
+      <div class="career-track">
+        <div class="career-track-header">
+          <span class="career-icon">🚀</span>
+          <div>
+            <div class="career-title">DevOps / SRE Engineer</div>
+            <div class="career-sub">Automate delivery and run reliable systems</div>
+          </div>
+        </div>
+        <div class="career-certs">
+          <span class="cert-badge cert-orange">AWS DevOps Engineer</span>
+          <span class="cert-badge cert-green">CKA — Kubernetes Admin</span>
+          <span class="cert-badge cert-green">Terraform Associate</span>
+          <span class="cert-badge cert-purple">CompTIA Linux+</span>
+        </div>
+        <div class="career-skills">
+          <div class="career-skills-label">You are practicing this when you:</div>
+          <div class="career-skill-item">• Write GitHub Actions CI/CD pipelines</div>
+          <div class="career-skill-item">• Run <code>docker build</code> and <code>kubectl apply</code></div>
+          <div class="career-skill-item">• Write Terraform for infrastructure as code</div>
+          <div class="career-skill-item">• Monitor systems with CloudWatch / Prometheus</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- SETUP -->
+  <div class="tp" id="setup-panel">
+    <div id="setup-scroll">
+      <div class="setup-block">
+        <h3>🔑 Step 1 — API Key</h3>
+        <p>Get your key at console.anthropic.com, then add it to your shell config so it's always available:</p>
+        <div class="code">export ANTHROPIC_API_KEY="sk-ant-..."</div>
+        <p>Add to ~/.zshrc or ~/.bashrc to make it permanent.</p>
+      </div>
+      <div class="setup-block">
+        <h3>🚀 Step 2 — Start the server</h3>
+        <div class="code">cd terminal-tutor
+npm install
+node server.js</div>
+      </div>
+      <div class="setup-block">
+        <h3>🔗 Step 3 — Hook your terminal</h3>
+        <p>In your working terminal (separate from the server):</p>
+        <div class="code">source /path/to/terminal-tutor/tutor.sh</div>
+        <p>That's it. Every command you run will be explained here in real time.</p>
+      </div>
+      <div class="setup-block">
+        <h3>💬 Terminal commands</h3>
+        <div class="label">Manually explain last command</div>
+        <div class="code">tutor</div>
+        <div class="label">Ask a question from terminal</div>
+        <div class="code">ask what does this error mean?</div>
+      </div>
+      <div class="setup-block" style="border-color:rgba(144,112,255,.2)">
+        <h3>Connection</h3>
+        <p>Status: <span id="conn-status" style="color:var(--red)">Not connected</span></p>
+        <p>Server: ws://localhost:3737</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="footer">
+    <span id="footer-msg">Waiting for terminal…</span>
+    <span id="footer-count">0 commands</span>
+  </div>
+
+</div>
+
+<script>
+// ── GLOSSARY DATA ─────────────────────────────────────────────────────────────
+let GLOSSARY = [
+  // ── VERSION CONTROL ──
+  { term:'git', cat:'Version Control', def:'A time machine for your code. Saves snapshots (commits) so you can undo mistakes, see history, and collaborate without overwriting each other. Every engineering job on the planet requires git.' },
+  { term:'branch', cat:'Version Control', def:'A parallel version of your code. Work on a feature in a branch, then merge it into main when ready and reviewed. Keeps your main code clean. Core GitFlow and trunk-based development concept.' },
+  { term:'commit', cat:'Version Control', def:'A saved snapshot of your code at a point in time, with a message describing what changed. Like hitting Save with a label. Write clear commit messages — future you will thank present you.' },
+  { term:'push', cat:'Version Control', def:'Upload your local commits to GitHub (or another remote). Makes your work visible to others and backs it up online. Pushing to main often triggers CI/CD pipelines automatically.' },
+  { term:'pull', cat:'Version Control', def:'Download the latest changes from GitHub to your machine. Do this before starting new work so you are up to date. Prevents merge conflicts with teammates.' },
+  { term:'merge', cat:'Version Control', def:'Combining one branch into another. Usually: merge your feature branch into main once it is done and reviewed. Can create conflicts when the same file was edited in both branches.' },
+  { term:'rebase', cat:'Version Control', def:'Re-applies your commits on top of another branch, creating a cleaner linear history. Alternative to merge. More powerful but rewrites history — never rebase shared branches others are working from.' },
+  { term:'cherry-pick', cat:'Version Control', def:'Applying a specific commit from one branch to another without merging the whole branch. Useful for backporting a single bug fix to an older release without pulling in unfinished features.' },
+  { term:'stash', cat:'Version Control', def:'Temporarily saves uncommitted changes to a hidden shelf so you can switch tasks. Restore with "git stash pop". Do not leave important work in stash long-term — commit it to a named branch instead.' },
+  { term:'pull request', cat:'Version Control', def:'A request to merge your branch into main, triggering a code review. Also called PR or MR (merge request on GitLab). Industry standard for shipping code safely in professional engineering teams.' },
+  { term:'trunk-based development', cat:'Version Control', def:'A strategy where everyone commits directly to main (or very short-lived branches). Used by high-performing teams like Google and Meta. Requires strong automated testing (CI/CD) to catch regressions fast.' },
+  { term:'CI/CD', cat:'DevOps', def:'Continuous Integration / Continuous Deployment. Automatically runs tests and deploys code every time you push. Catches bugs before they reach users. Tested in AWS DevOps Engineer, CompTIA DevOps+, and every cloud certification.' },
+  { term:'GitHub Actions', cat:'DevOps', def:'GitHub\'s built-in CI/CD system. Triggers automated workflows (test, build, deploy) when you push code. Defined in YAML files in .github/workflows/. Industry standard — every professional engineering team uses CI/CD.' },
+  // ── NODE.JS / JAVASCRIPT ──
+  { term:'npm', cat:'Node.js', def:'Node Package Manager. The app store for JavaScript. "npm install" downloads all packages listed in package.json. Never commit node_modules — it can be hundreds of MB and is regenerated from package.json.' },
+  { term:'package.json', cat:'Node.js', def:'The ID card and settings file of your project. Lists the project name, version, scripts you can run, and all package dependencies. This file is committed to Git. node_modules is not.' },
+  { term:'node_modules', cat:'Node.js', def:'The folder where npm puts all installed packages. Never edit it directly. Never commit it to Git (add to .gitignore). Run "npm install" on a new machine to recreate it from package.json.' },
+  { term:'async/await', cat:'JavaScript', def:'A way to write code that waits for slow operations (API calls, database queries) without blocking everything else. "await" pauses until the Promise resolves. Required for modern Node.js backends.' },
+  { term:'Promise', cat:'JavaScript', def:'An object representing a future value — the result of an async operation. Can be pending, fulfilled, or rejected. Foundation of async/await. When a Promise rejects and you do not catch it, you get an UnhandledPromiseRejection error.' },
+  { term:'event loop', cat:'Node.js', def:'Node.js handles many concurrent requests with a single thread using an event loop. It never blocks — when waiting for I/O, it processes other tasks. This is why Node.js is fast for APIs but bad for CPU-heavy computation.' },
+  { term:'middleware', cat:'Web Dev', def:'Code that runs between a request arriving and a response being sent. A series of checkpoints: authentication → rate limiting → body parsing → your handler. Express.js is built entirely around the middleware pattern.' },
+  { term:'REST', cat:'Web Dev', def:'Representational State Transfer. A standard for API design: use URLs to identify resources, HTTP methods for actions (GET=read, POST=create, PUT=update, DELETE=remove). The most common API style in the industry.' },
+  { term:'GraphQL', cat:'Web Dev', def:'An API query language where the client specifies exactly what data it needs. Eliminates over-fetching (too much data) and under-fetching (multiple requests). Used by GitHub, Shopify, and Meta. Alternative to REST.' },
+  { term:'WebSocket', cat:'Networking', def:'A persistent two-way connection between browser and server. Like a phone call vs HTTP which is like text messages. Powers real-time features: live chat, collaborative editing, stock tickers, and multiplayer games.' },
+  { term:'NPX', cat:'Node.js', def:'Runs npm packages without installing them globally. "npx create-next-app" downloads and runs it temporarily. Always prefer npx for CLI tools so you always get the latest version without polluting your global npm.' },
+  { term:'process', cat:'Node.js', def:'A running program instance. When you run "node server.js" that creates a process. Ctrl+C kills it. process.env is where environment variables live. process.exit(1) quits with an error code.' },
+  // ── SECURITY ──
+  { term:'.env', cat:'Security', def:'A hidden file holding secret values like API keys and passwords. Your code reads from here with process.env.KEY_NAME so secrets never appear in code files. The first rule of app security: never commit .env to Git.' },
+  { term:'.gitignore', cat:'Security', def:'A file telling Git which files to never upload. Must always include: .env, node_modules/, .aws/credentials, __pycache__/, .venv/, *.pyc, .DS_Store, and build/ folders. Create this before your first commit.' },
+  { term:'API key', cat:'Security', def:'A secret token proving your app is authorized to use a service (Stripe, OpenAI, AWS). Never put in code files. Store in .env. Rotate regularly. Leaked API keys are the #1 cause of cloud breaches and surprise bills.' },
+  { term:'environment variable', cat:'Security', def:'A secret setting stored outside your code. In Node.js: process.env.MY_KEY. In Python: os.environ["MY_KEY"]. The only correct way to store API keys, database passwords, and any sensitive configuration.' },
+  { term:'localhost', cat:'Networking', def:'Your own computer. http://localhost:3000 is a server running on your machine, not the internet. Only you can see it. When you deploy to production, localhost URLs stop working — you use a real domain or IP.' },
+  { term:'port', cat:'Networking', def:'A numbered channel for network traffic on your computer. Port 80=HTTP, 443=HTTPS, 22=SSH, 3306=MySQL, 5432=PostgreSQL. Different apps run on different ports to avoid clashing. Firewalls control which ports are open.' },
+  { term:'HTTPS', cat:'Security', def:'HTTP Secure. Encrypts all data between browser and server using TLS so no one can intercept it. Required for any production app. Free certificates via Let\'s Encrypt. Without HTTPS, browsers show a "Not Secure" warning.' },
+  { term:'TLS', cat:'Security', def:'Transport Layer Security. The encryption protocol behind HTTPS. TLS 1.3 is the current standard. Handles the handshake, certificate verification, and encrypts all traffic. CompTIA Security+ Domain 3 and CISSP cover this in depth.' },
+  { term:'SSL', cat:'Security', def:'Secure Sockets Layer — the deprecated predecessor to TLS. SSL itself is no longer used but the term "SSL certificate" is still colloquially used to mean TLS certificate. When someone says "install SSL," they mean configure TLS.' },
+  { term:'CORS', cat:'Security', def:'Cross-Origin Resource Sharing. A browser security rule controlling which websites can call your API. If frontend is on app.com and API is on api.com, CORS headers must be configured. Misconfigured CORS is a common security vulnerability.' },
+  { term:'XSS', cat:'Security', def:'Cross-Site Scripting. An attacker injects malicious JavaScript into a webpage that runs in other users\' browsers, stealing sessions or data. Prevent with output encoding and Content Security Policy (CSP). OWASP Top 10 #3.' },
+  { term:'SQL injection', cat:'Security', def:'An attack where malicious SQL code is inserted via user input, exposing or destroying your database. Prevent with parameterized queries — never build SQL with string concatenation. OWASP Top 10 and every security certification tests this.' },
+  { term:'CSRF', cat:'Security', def:'Cross-Site Request Forgery. Tricks a logged-in user into unknowingly submitting a request to your app. Prevent with CSRF tokens and SameSite cookie attribute. One of the oldest web vulnerabilities — still in OWASP Top 10.' },
+  { term:'JWT', cat:'Security', def:'JSON Web Token. A compact signed token for proving identity. Server verifies the signature without a database lookup — making it stateless and fast. Set short expiry (15min) and use refresh tokens. Never store sensitive data inside JWTs.' },
+  { term:'OAuth', cat:'Security', def:'Authorization standard letting your app access another service on a user\'s behalf without their password. The "Login with Google" button uses OAuth 2.0. OAuth gives you an access token, not the user\'s actual password.' },
+  { term:'OAuth token', cat:'Security', def:'The digital key issued after OAuth authorization. Must be stored securely — never in localStorage for sensitive tokens. Encrypt at rest in your database. Always check expiry before using and handle token refresh.' },
+  { term:'session', cat:'Security', def:'A temporary server-side record keeping a user logged in. Identified by a session ID stored in a cookie. Must have expiry. Stateful (unlike JWT). Invalidate immediately on logout. Store sessions in Redis for scalability.' },
+  { term:'cookie', cat:'Security', def:'Small data stored in the browser, sent with every request to a domain. Use Secure (HTTPS only), HttpOnly (no JavaScript access — blocks XSS theft), and SameSite=Strict (blocks CSRF). These three flags together are the baseline.' },
+  { term:'encryption', cat:'Security', def:'Scrambling data so only someone with the decryption key can read it. Symmetric: same key encrypts and decrypts (AES-256). Asymmetric: public key encrypts, private key decrypts (RSA). Foundation of HTTPS, JWT signing, and data protection.' },
+  { term:'hashing', cat:'Security', def:'A one-way function that converts data into a fixed-length fingerprint. Cannot be reversed. Used for passwords — store the hash, never the plain password. Use bcrypt or Argon2 — never MD5 or SHA1 for passwords.' },
+  { term:'bcrypt', cat:'Security', def:'A password hashing algorithm that deliberately runs slowly to resist brute-force attacks. Automatically adds a random salt. The industry standard for storing passwords. Use a work factor of 12+. Always use bcrypt or Argon2, never MD5 or SHA1.' },
+  { term:'salt', cat:'Security', def:'Random data added to a password before hashing so identical passwords produce different hashes. Prevents rainbow table attacks (pre-computed hash lookups). bcrypt handles salting automatically — you do not need to manage it manually.' },
+  { term:'MFA / 2FA', cat:'Security', def:'Multi-Factor Authentication. Requires two forms of proof: something you know (password) + something you have (phone code). Blocks 99%+ of automated credential attacks. Required for AWS root accounts and any SOC 2 compliant system.' },
+  { term:'zero trust', cat:'Security', def:'Security model: trust nothing by default, verify everything. Never assume something is safe just because it is inside your network. Every request is authenticated and authorized regardless of origin. Core CISSP and CompTIA Security+ concept.' },
+  { term:'least privilege', cat:'Security', def:'Give every user, service, and process only the minimum permissions needed for their job. If a Lambda only reads S3, it should not have write or delete access. Core principle in CISSP, AWS IAM design, and CompTIA Security+.' },
+  { term:'OWASP Top 10', cat:'Security', def:'The 10 most critical web security risks, published by the Open Web Application Security Project. Current top: Broken Access Control, Cryptographic Failures, Injection, Insecure Design, Security Misconfiguration. Every developer must know these.' },
+  { term:'CVE', cat:'Security', def:'Common Vulnerabilities and Exposures. A public database of known security flaws in software with severity scores (CVSS). Security teams use CVEs to prioritize patching. "npm audit" shows CVEs in your dependencies.' },
+  { term:'penetration test', cat:'Security', def:'Authorized attempt to hack a system to find vulnerabilities before real attackers do. Requires explicit written permission. Pen tests follow a structured methodology: recon → scan → exploit → report. CompTIA PenTest+ and CEH certify this skill.' },
+  { term:'red team', cat:'Security', def:'A group that simulates real attacks on your systems to find weaknesses. Works against the blue team (defenders). Advanced offensive security practice covered in CISSP and CompTIA CySA+. Red team exercises reveal gaps automated scans miss.' },
+  { term:'blue team', cat:'Security', def:'The defenders — security team that monitors for, detects, and responds to attacks. Uses SIEM, EDR, and firewalls. CompTIA CySA+ (Cybersecurity Analyst) focuses on blue team skills: threat hunting, incident response, vulnerability management.' },
+  { term:'SOC', cat:'Security', def:'Security Operations Center. A team monitoring systems 24/7 for threats. SOC analysts triage alerts, investigate incidents, and respond to breaches. SOC Analyst Level 1 is a common entry-level cybersecurity job.' },
+  { term:'SIEM', cat:'Security', def:'Security Information and Event Management. Aggregates logs from all systems and alerts on suspicious patterns using correlation rules and ML. Splunk, Microsoft Sentinel, AWS Security Hub. The central tool of every SOC.' },
+  { term:'WAF', cat:'Security', def:'Web Application Firewall. Filters HTTP requests to block XSS, SQL injection, and other web attacks before they reach your app. AWS WAF, Cloudflare WAF. Covered in AWS Security Specialty and CompTIA Security+ exams.' },
+  { term:'DDoS', cat:'Security', def:'Distributed Denial of Service. Flooding a server with traffic from thousands of machines to make it unavailable. AWS Shield (basic is free) defends against network-level DDoS. Rate limiting, CDNs, and auto-scaling also help.' },
+  { term:'CIA triad', cat:'Security', def:'The three pillars of information security: Confidentiality (data is private), Integrity (data is not tampered with), Availability (systems are accessible). Every CISSP domain and Security+ objective maps to one or more of these.' },
+  { term:'brute force attack', cat:'Security', def:'Automatically trying every possible password combination until one works. Rate limiting, account lockout after N attempts, and MFA make this impractical. CompTIA Security+ Domain 1 covers attack types including brute force.' },
+  { term:'social engineering', cat:'Security', def:'Manipulating people rather than systems to gain access. Phishing emails, pretexting phone calls, tailgating into offices. The #1 attack vector because humans are often the weakest link. CISSP Domain 1 and Security+ cover this extensively.' },
+  { term:'phishing', cat:'Security', def:'Fake emails designed to trick users into revealing passwords or clicking malicious links. Spear phishing targets specific individuals with personalized content. Vishing = voice phishing. Smishing = SMS phishing. Security awareness training is the defense.' },
+  { term:'zero-day', cat:'Security', def:'A vulnerability unknown to the vendor — zero days have passed since discovery so no patch exists yet. Extremely dangerous. High-value targets for nation-state attackers. Organizations must rely on WAFs and behavior-based detection for zero-days.' },
+  { term:'input validation', cat:'Security', def:'Checking that user input is the expected type, format, length, and range before processing it. Prevents injection attacks. Validate on the server, not just the browser. Never trust user input — it is the root cause of most web vulnerabilities.' },
+  { term:'rate limiting', cat:'Security', def:'Restricting how many requests a client can make in a time window. Prevents brute force attacks, scraping, and abuse. Implement on every API with express-rate-limit, AWS API Gateway throttling, or Cloudflare rules.' },
+  { term:'supply chain attack', cat:'Security', def:'Attacking software by compromising a package or tool that developers use. Example: a malicious npm package that steals environment variables. Run "npm audit" regularly and pin dependency versions in package-lock.json.' },
+  { term:'secret scanning', cat:'Security', def:'Automatically scanning code repositories for accidentally committed secrets (API keys, passwords, tokens). GitHub Secret Scanning, GitLeaks, TruffleHog. Set up pre-commit hooks to catch secrets before they ever reach your repo.' },
+  { term:'encryption at rest', cat:'Security', def:'Encrypting data stored in databases, S3 buckets, or disk volumes so that even if physical storage is stolen, the data is unreadable. AWS S3, RDS, and EBS all support this natively. Enable it by default — it is usually one checkbox.' },
+  { term:'GDPR', cat:'Security', def:'General Data Protection Regulation. EU law giving users the right to see, correct, and delete their personal data. Fines up to 4% of global annual revenue. Requires consent, data minimization, and breach notification within 72 hours.' },
+  { term:'PII', cat:'Security', def:'Personally Identifiable Information. Data that identifies a person: name, email, IP address, location, SSN, date of birth. Protected by GDPR, CCPA, HIPAA. Minimize collection, encrypt at rest, restrict access, log all access.' },
+  { term:'defense in depth', cat:'Security', def:'Layering multiple independent security controls so that if one fails, others still protect the system. Example: WAF + authentication + authorization + encryption + monitoring. Core CISSP concept and AWS Well-Architected Framework principle.' },
+  { term:'AAA', cat:'Security', def:'Authentication (who are you?), Authorization (what are you allowed to do?), Accounting (logging what you did). The three pillars of access control. Covered in CompTIA Security+ and CISSP Domain 5 (Identity and Access Management).' },
+  { term:'PKI', cat:'Security', def:'Public Key Infrastructure. The system of certificates, certificate authorities, and public/private key pairs that powers HTTPS. Your browser trusts CAs (Certificate Authorities) like DigiCert and Let\'s Encrypt that issue and sign certificates.' },
+  { term:'audit log', cat:'Security', def:'A permanent, tamper-evident record of every important action: who did it, when, from where, what changed. Required for security compliance (SOC 2, HIPAA, PCI-DSS). Never delete audit logs. Store them separately from operational data.' },
+  { term:'sandbox', cat:'Security', def:'Running untrusted code in an isolated environment with no access to the rest of the system. If the code is malicious, it cannot escape the sandbox. Browsers sandbox JavaScript tabs. Docker containers sandbox processes. Security certifications test this.' },
+  // ── CLOUD / AWS ──
+  { term:'AWS', cat:'Cloud — AWS', def:'Amazon Web Services. World\'s largest cloud provider with 200+ services. AWS certifications are among the highest-value in tech: Cloud Practitioner → Solutions Architect → Developer → DevOps Engineer → Security Specialty.' },
+  { term:'EC2', cat:'Cloud — AWS', def:'Elastic Compute Cloud. Virtual servers in the cloud. You choose CPU, RAM, and OS. Pay per hour. The foundational compute service — appears on every AWS certification. Think of it as a rented computer in Amazon\'s data center.' },
+  { term:'S3', cat:'Cloud — AWS', def:'Simple Storage Service. Infinitely scalable object storage. Store files, backups, static websites, ML training data. 11 nines of durability (99.999999999%). Every AWS certification includes S3. Enable versioning and encryption on all production buckets.' },
+  { term:'Lambda', cat:'Cloud — AWS', def:'AWS serverless compute. Upload a function; it runs when triggered (HTTP request, S3 upload, schedule, queue message). Pay per millisecond of execution. No servers to manage. Foundation of serverless architecture. AWS Developer exam core service.' },
+  { term:'IAM', cat:'Cloud — AWS', def:'Identity and Access Management. Controls who (users, services) can do what in your AWS account. Built on users, groups, roles, and policies. "Least privilege" is the core IAM design principle. The first topic on every AWS certification.' },
+  { term:'VPC', cat:'Cloud — AWS', def:'Virtual Private Cloud. Your isolated private network inside AWS. Contains public subnets (internet-accessible) and private subnets (database tier). Security groups control traffic at the resource level. Core AWS Solutions Architect topic.' },
+  { term:'CloudWatch', cat:'Cloud — AWS', def:'AWS monitoring and observability. Collects metrics (CPU, memory, error rates), logs, and custom events. Set alarms to alert you when thresholds are breached. CloudWatch Logs stores all application logs. Foundation of observability on AWS.' },
+  { term:'RDS', cat:'Cloud — AWS', def:'Relational Database Service. Managed PostgreSQL, MySQL, MariaDB, Oracle, SQL Server. AWS handles backups, patches, failover, and replication. Use Multi-AZ deployments for production. Much better than running your own DB on EC2.' },
+  { term:'ECS', cat:'Cloud — AWS', def:'Elastic Container Service. Run Docker containers on AWS. Pair with Fargate to go fully serverless (no EC2 to manage). Easier than Kubernetes for most use cases. Tested in AWS Developer and DevOps Engineer certifications.' },
+  { term:'EKS', cat:'Cloud — AWS', def:'Elastic Kubernetes Service. Managed Kubernetes on AWS. AWS runs the control plane; you manage worker nodes. Use when you need full Kubernetes power. CKA (Certified Kubernetes Administrator) pairs well with EKS expertise.' },
+  { term:'CloudFormation', cat:'Cloud — AWS', def:'AWS infrastructure as code. Define your entire AWS setup in YAML/JSON templates and deploy it reproducibly. Version-controlled infrastructure. AWS-native alternative to Terraform. Core AWS DevOps Engineer certification topic.' },
+  { term:'Terraform', cat:'Cloud — AWS', def:'The most popular open-source infrastructure as code tool. Write HCL code to define cloud infrastructure across AWS, Azure, and GCP. State file tracks what is deployed. Industry standard for DevOps and cloud engineering roles.' },
+  { term:'CloudFront', cat:'Cloud — AWS', def:'AWS Content Delivery Network. Caches your content at 400+ edge locations worldwide so users get it from a nearby server. Reduces latency and origin bandwidth costs. Pair with S3 for fast static website hosting globally.' },
+  { term:'Route53', cat:'Cloud — AWS', def:'AWS DNS service. Maps domain names to IP addresses and supports health-check-based failover routing. The 53 refers to DNS port 53. Handles domain registration too. AWS Solutions Architect covers Route53 routing policies extensively.' },
+  { term:'API Gateway', cat:'Cloud — AWS', def:'AWS service to create and manage APIs. Sits in front of Lambda or EC2. Handles authentication, rate limiting, SSL, and request transformation. Used for serverless REST APIs and WebSocket APIs. AWS Developer core service.' },
+  { term:'SNS', cat:'Cloud — AWS', def:'Simple Notification Service. Pub/sub messaging — one message broadcasts to many subscribers (email, SMS, Lambda, SQS). The "fan-out" pattern: one S3 upload triggers multiple Lambda functions via SNS.' },
+  { term:'SQS', cat:'Cloud — AWS', def:'Simple Queue Service. Message queue that decouples services. Producer puts jobs in; consumers pull them off at their own pace. Handles traffic spikes without data loss. Pair with Lambda for asynchronous background processing.' },
+  { term:'DynamoDB', cat:'Cloud — AWS', def:'AWS fully managed NoSQL database. Single-digit millisecond latency at any scale. Key-value and document model. Great for session storage, gaming leaderboards, IoT, and real-time apps. AWS Developer Associate tests DynamoDB heavily.' },
+  { term:'Fargate', cat:'Cloud — AWS', def:'AWS serverless container compute. Run Docker containers without managing any EC2 instances. Pair ECS or EKS with Fargate for a fully serverless container platform. Pay per vCPU and memory per second — no idle server costs.' },
+  { term:'Auto Scaling', cat:'Cloud — AWS', def:'Automatically adds or removes EC2 instances (or ECS tasks) based on demand. Scale out when traffic spikes, scale in when quiet to save money. Ensures availability without manual intervention. Core AWS Solutions Architect concept.' },
+  { term:'Availability Zone', cat:'Cloud — AWS', def:'A physically separate data center within an AWS Region. Deploy across 2+ AZs for high availability — if one data center fails, the others keep your app running. Always use Multi-AZ in production for critical workloads.' },
+  { term:'Region', cat:'Cloud — AWS', def:'A geographic area with multiple Availability Zones (us-east-1=Virginia, eu-west-1=Ireland, ap-southeast-1=Singapore). Choose a region close to your users for low latency. Data residency laws may require keeping data in specific regions.' },
+  { term:'KMS', cat:'Cloud — AWS', def:'Key Management Service. AWS-managed encryption key storage. Used to encrypt S3, RDS, Lambda env vars, and EBS volumes. Keys never leave KMS in plaintext. Envelope encryption pattern: KMS encrypts a data key, data key encrypts data.' },
+  { term:'Secrets Manager', cat:'Cloud — AWS', def:'AWS service for storing and automatically rotating secrets (database passwords, API keys). Reference secrets in code by name — they are fetched at runtime. Better than hardcoding or even SSM Parameter Store for sensitive values.' },
+  { term:'CloudTrail', cat:'Cloud — AWS', def:'Records every API call made in your AWS account — who did what, when, from where. The complete audit log of your AWS account. Required for compliance (SOC 2, PCI, HIPAA). Enable in every region and store logs in S3 with CloudWatch alerts.' },
+  { term:'GuardDuty', cat:'Cloud — AWS', def:'AWS threat detection using ML. Analyzes CloudTrail logs, VPC Flow Logs, and DNS queries for suspicious behavior. Alerts on compromised credentials, crypto mining, reconnaissance, and data exfiltration. AWS Security Specialty core service.' },
+  { term:'IAM role', cat:'Cloud — AWS', def:'An IAM identity assumed by a service (Lambda, EC2) or user temporarily. Instead of giving an EC2 instance API keys, give it an IAM role — far more secure. Roles are the correct way to grant AWS permissions to any service.' },
+  { term:'security group', cat:'Cloud — AWS', def:'AWS stateful virtual firewall for EC2 and other resources. Controls inbound and outbound traffic by port, protocol, and IP range. Default: deny all inbound, allow all outbound. Always restrict to the minimum needed ports.' },
+  { term:'ARN', cat:'Cloud — AWS', def:'Amazon Resource Name. Globally unique identifier for every AWS resource. Format: arn:aws:service:region:account-id:resource-type/resource-id. Used in IAM policies to specify exactly which resource a permission applies to.' },
+  { term:'serverless', cat:'Cloud', def:'Running code without managing servers. AWS Lambda, Vercel Functions, Supabase Edge Functions, Cloudflare Workers. The cloud handles scaling, availability, and infrastructure. You pay per execution rather than per server-hour.' },
+  { term:'IaaS', cat:'Cloud', def:'Infrastructure as a Service. Cloud provides raw compute, storage, and networking. You manage OS, runtime, and application. EC2 and Azure VMs are IaaS. Most control, most responsibility. CompTIA Cloud+ and all cloud certifications cover IaaS/PaaS/SaaS.' },
+  { term:'PaaS', cat:'Cloud', def:'Platform as a Service. Cloud provides the runtime and platform; you provide the code. Elastic Beanstalk, Heroku, Google App Engine. Less infrastructure work than IaaS. Good for teams focused on shipping features, not ops.' },
+  { term:'SaaS', cat:'Cloud', def:'Software as a Service. A complete application delivered via the web. Salesforce, Slack, GitHub, Notion. You just use it — no infrastructure or code. AWS Cloud Practitioner and CompTIA Cloud+ require knowing the IaaS/PaaS/SaaS model.' },
+  { term:'CDN', cat:'Cloud', def:'Content Delivery Network. A global network of edge servers caching your content close to users. Dramatically reduces latency for static assets. CloudFront, Cloudflare, Fastly. Required for global apps serving images, video, or JS bundles.' },
+  { term:'multi-tenancy', cat:'Cloud', def:'Multiple customers (tenants) sharing the same application and infrastructure, each completely isolated from the others. SaaS platforms are multi-tenant. Critical design challenge: one tenant must never access another tenant\'s data (RLS is one solution).' },
+  // ── AZURE ──
+  { term:'Azure', cat:'Cloud — Azure', def:'Microsoft\'s cloud platform. Second-largest after AWS. Strong in enterprise, .NET, and hybrid cloud. Certifications: AZ-900 (Fundamentals), AZ-104 (Administrator), AZ-204 (Developer), AZ-500 (Security Engineer).' },
+  { term:'Azure AD', cat:'Cloud — Azure', def:'Azure Active Directory. Microsoft\'s cloud identity platform. Manages users, groups, and application registrations. Used for Single Sign-On across Microsoft 365 and enterprise apps. The AWS IAM equivalent in Azure.' },
+  { term:'Azure Functions', cat:'Cloud — Azure', def:'Microsoft\'s serverless compute. Equivalent to AWS Lambda. Runs code triggered by HTTP, timer, queue message, or blob upload. Supports Node.js, Python, C#, Java. AZ-204 Developer certification covers this.' },
+  { term:'Azure Blob Storage', cat:'Cloud — Azure', def:'Microsoft\'s object storage service. Equivalent to AWS S3. Stores files, backups, and unstructured data at scale. Integrates with Azure CDN and Azure ML for training data pipelines.' },
+  { term:'AKS', cat:'Cloud — Azure', def:'Azure Kubernetes Service. Microsoft\'s managed Kubernetes offering. Equivalent to AWS EKS. Covered in AZ-104 and AZ-204 certifications. Use with Azure Container Registry (ACR) for private image storage.' },
+  // ── NETWORKING ──
+  { term:'HTTP', cat:'Networking', def:'HyperText Transfer Protocol. Foundation of web communication. Request/response: client asks, server answers. Methods: GET (read), POST (create), PUT (full update), PATCH (partial update), DELETE (remove). CompTIA Network+ foundational topic.' },
+  { term:'DNS', cat:'Networking', def:'Domain Name System. Translates domain names (example.com) to IP addresses (93.184.216.34). The internet\'s phone book. DNS poisoning redirects this lookup maliciously. CompTIA Network+ core topic. AWS Route53 is a DNS service.' },
+  { term:'TCP/IP', cat:'Networking', def:'The fundamental protocols of internet communication. TCP ensures reliable delivery — retransmits lost packets and reorders them. IP handles addressing and routing between networks. CompTIA Network+ is built on TCP/IP knowledge.' },
+  { term:'UDP', cat:'Networking', def:'User Datagram Protocol. Faster than TCP but no guaranteed delivery order. Used for video streaming, gaming, VoIP where speed matters more than perfection. DNS uses UDP. TCP is for anything where losing data is unacceptable.' },
+  { term:'load balancer', cat:'Networking', def:'Distributes incoming traffic across multiple servers so no single one is overwhelmed. AWS ALB (Application Load Balancer) for HTTP/HTTPS. NLB for TCP/UDP. Health checks remove unhealthy servers automatically. Essential for production availability.' },
+  { term:'reverse proxy', cat:'Networking', def:'A server sitting in front of your backend that forwards requests to it. Nginx is a popular reverse proxy. Adds SSL termination, caching, compression, and load balancing. Hides your actual backend IPs from the public internet.' },
+  { term:'latency', cat:'Networking', def:'The time delay between sending a request and receiving a response. Measured in milliseconds. Distance causes latency (speed of light). CDNs and edge computing reduce latency by serving content from locations closer to users.' },
+  { term:'subnet', cat:'Networking', def:'A segment of a network with its own IP address range. In AWS VPC: public subnets route to the internet gateway (for web servers), private subnets do not (for databases). Subnets exist within a single Availability Zone.' },
+  { term:'CIDR', cat:'Networking', def:'Classless Inter-Domain Routing. Notation for IP ranges. 10.0.0.0/16 = 65,536 addresses. /24 = 256 addresses. The smaller the number, the larger the range. Used to define VPC and subnet address spaces in AWS. CompTIA Network+ core concept.' },
+  { term:'VPN', cat:'Networking', def:'Virtual Private Network. Encrypts internet traffic and routes it through a secure tunnel. For users: privacy and bypassing restrictions. For enterprises: secure remote access to private cloud networks. AWS VPN connects on-premises to VPC.' },
+  { term:'OSI model', cat:'Networking', def:'7-layer model of network communication: Layer 1 Physical, 2 Data Link, 3 Network (IP), 4 Transport (TCP/UDP), 5 Session, 6 Presentation, 7 Application (HTTP). CompTIA Network+ and CISSP both test this extensively.' },
+  { term:'curl', cat:'Terminal', def:'A command to make HTTP requests from the terminal. Like your browser fetching a URL, but scriptable. Use to test APIs: "curl -X POST http://localhost:3000/api/users -H Content-Type:application/json -d {}" Essential developer tool.' },
+  { term:'chmod', cat:'Terminal', def:'Sets file permissions. chmod 755 = owner can read/write/execute, others can read/execute. chmod 644 = owner can read/write, others can only read. chmod +x makes a file executable. CompTIA Linux+ and Security+ test this.' },
+  { term:'sudo', cat:'Terminal', def:'Runs a command as superuser (root/admin). Can modify any system file. Use with extreme caution — wrong sudo commands can destroy a system. Never run web servers or app code as root. Principle of least privilege applies here.' },
+  // ── DATABASES ──
+  { term:'SQL', cat:'Database', def:'Structured Query Language. The universal language for relational databases. SELECT to read, INSERT to add, UPDATE to change, DELETE to remove. WHERE filters rows. JOIN combines tables. Every developer, data analyst, and backend engineer needs SQL.' },
+  { term:'NoSQL', cat:'Database', def:'Databases that do not use tables and SQL. Types: document (MongoDB), key-value (Redis, DynamoDB), column-family (Cassandra), graph (Neo4j). Scale horizontally more easily than SQL but sacrifice ACID guarantees. Choose based on your data shape.' },
+  { term:'PostgreSQL', cat:'Database', def:'The most advanced open-source relational database. Supports JSON, full-text search, geospatial data, arrays, and custom types. Used by Supabase, Heroku, AWS RDS. The safe, powerful choice for most production apps.' },
+  { term:'Redis', cat:'Database', def:'In-memory key-value store. Extremely fast (sub-millisecond). Used for caching, session storage, rate limiting, pub/sub, and leaderboards. Cache-aside pattern: check Redis first, on miss query the database and store result in Redis.' },
+  { term:'migration', cat:'Database', def:'A numbered, version-controlled script that changes the database schema (adds a column, creates a table, adds an index). Run in sequence to evolve the database safely over time. Never alter production tables manually — always use migrations.' },
+  { term:'schema', cat:'Database', def:'The structure of your database: which tables exist, what columns they have, data types, constraints, and relationships. Define it explicitly and version-control changes via migrations. A well-designed schema prevents data quality issues.' },
+  { term:'index', cat:'Database', def:'A data structure that dramatically speeds up lookups on specific columns. Without an index, a query scans every row (full table scan). With one, it jumps directly to matching rows. Add indexes on columns used in WHERE, JOIN, and ORDER BY clauses.' },
+  { term:'transaction', cat:'Database', def:'A group of database operations that either all succeed or all fail together. Ensures data consistency. Example: debiting one account and crediting another must both succeed or both fail — never one without the other.' },
+  { term:'ACID', cat:'Database', def:'Atomicity (all or nothing), Consistency (valid state always), Isolation (concurrent transactions do not interfere), Durability (committed data survives crashes). These four guarantees make relational databases trustworthy for financial and critical data.' },
+  { term:'ORM', cat:'Database', def:'Object-Relational Mapper. A library letting you interact with the database using code objects instead of raw SQL. Prisma, Sequelize (Node.js), SQLAlchemy (Python). Generates SQL from code. Can hide performance problems — always check the generated queries.' },
+  { term:'RLS', cat:'Database', def:'Row-Level Security. Database-level rules controlling which rows a user can see or modify. Example: users can only read rows where user_id matches their own. Built into PostgreSQL. Supabase makes it configurable. Critical for multi-tenant apps.' },
+  { term:'sharding', cat:'Database', def:'Splitting a large database horizontally across multiple servers based on a shard key (e.g., user ID). Each shard holds a subset of rows. Used when a single server cannot handle the data volume. Complex to implement — only do this when necessary.' },
+  { term:'replication', cat:'Database', def:'Copying data from a primary database to one or more replicas. Read replicas handle SELECT queries to reduce load on the primary. Also provides failover if primary goes down. AWS RDS Multi-AZ uses synchronous replication for zero data loss.' },
+  { term:'connection pool', cat:'Database', def:'A set of pre-established database connections reused by multiple requests instead of creating a new connection per request (which is slow and expensive). PgBouncer for PostgreSQL. Most ORMs include built-in connection pooling.' },
+  { term:'N+1 problem', cat:'Database', def:'A performance bug: fetch a list of 100 items then make 100 separate queries for related data = 101 total queries. Fix with SQL JOINs or ORM eager loading. A single N+1 query can make a fast page load take 10+ seconds on large datasets.' },
+  // ── DOCKER / KUBERNETES / DEVOPS ──
+  { term:'Docker', cat:'DevOps', def:'Packages your app and all its dependencies into a portable container. "Works on my machine" becomes "works everywhere." Essential for cloud deployments. Every cloud engineering and DevOps role requires Docker knowledge.' },
+  { term:'container', cat:'DevOps', def:'A lightweight isolated environment running a single application with all its dependencies. Faster and lighter than a VM because it shares the host OS kernel. Containers are ephemeral — do not store data inside them, use volumes or external storage.' },
+  { term:'image', cat:'DevOps', def:'A read-only template for creating containers. Like a class vs an instance — the image is the blueprint, the running container is the instance. Store images in registries: Docker Hub (public) or AWS ECR (private).' },
+  { term:'Dockerfile', cat:'DevOps', def:'A recipe for building a Docker image. Specifies base OS, installs dependencies, copies your code, and sets the startup command. Version-controlled alongside your code. Multi-stage builds keep final images small and secure.' },
+  { term:'docker-compose', cat:'DevOps', def:'Runs multiple containers together (app + database + Redis + reverse proxy) with one command: "docker-compose up". Defined in docker-compose.yml. Perfect for local development environments that mirror production.' },
+  { term:'Kubernetes', cat:'DevOps', def:'Open-source system for orchestrating containers at scale. Handles deployment, scaling, self-healing, and service discovery across clusters of machines. AWS EKS, Azure AKS, and Google GKE are managed Kubernetes offerings. CKA is the certification.' },
+  { term:'pod', cat:'DevOps', def:'The smallest deployable unit in Kubernetes. Wraps one or more containers that share network and storage. Each pod gets its own internal IP. Pods are ephemeral — they are replaced, not repaired. Use Deployments to manage pod replicas.' },
+  { term:'Helm', cat:'DevOps', def:'The package manager for Kubernetes. Packages manifests into versioned "charts" that can be shared and deployed. Like npm for Kubernetes. Simplifies deploying complex apps like databases or monitoring stacks onto clusters.' },
+  { term:'infrastructure as code', cat:'DevOps', def:'Defining infrastructure (servers, networks, databases) in code files that are version-controlled, reviewed, and applied automatically. Terraform and CloudFormation. Eliminates snowflake servers and makes infrastructure reproducible. Core cloud certification topic.' },
+  { term:'Prometheus', cat:'DevOps', def:'Open-source metrics collection and time-series database. Scrapes metrics from services every N seconds. Pairs with Grafana for visualization and alerting. Standard monitoring stack for Kubernetes and cloud-native applications.' },
+  { term:'Grafana', cat:'DevOps', def:'Open-source dashboard and visualization platform. Connects to Prometheus, CloudWatch, and other data sources to create real-time monitoring dashboards. Used by SREs and cloud engineers to monitor production system health.' },
+  { term:'observability', cat:'DevOps', def:'The ability to understand system behavior from its outputs. Three pillars: Metrics (quantitative: CPU%, error rate), Logs (qualitative: what happened), Traces (request journeys across services). AWS X-Ray provides distributed tracing. AWS DevOps exam core topic.' },
+  { term:'SLO', cat:'DevOps', def:'Service Level Objective. An internal target for reliability: "99.9% of API requests under 200ms." When SLOs are breached, engineering teams prioritize reliability over new features. Core concept for SRE roles and cloud engineering.' },
+  { term:'SLA', cat:'DevOps', def:'Service Level Agreement. A contract committing to uptime/performance with financial penalties for breaches. AWS S3 has a 99.99% monthly uptime SLA. Your SLAs must be less ambitious than your internal SLOs — SLOs are your early warning system.' },
+  { term:'canary deployment', cat:'DevOps', def:'Rolling a new version to a small percentage of users first (e.g., 5%) to detect issues before full rollout. If error rates increase, roll back immediately. Named after canaries in coal mines. AWS CodeDeploy and Kubernetes support this natively.' },
+  { term:'blue-green deployment', cat:'DevOps', def:'Running two identical production environments. Deploy to inactive (green), test it, then switch traffic. Zero-downtime deployments with instant rollback by switching back to blue. AWS Elastic Beanstalk and CodeDeploy support blue-green.' },
+  { term:'ArgoCD', cat:'DevOps', def:'GitOps continuous delivery tool for Kubernetes. Watches a Git repo and automatically syncs cluster state to match. Treats Git as the single source of truth. Visualizes drift between desired (Git) and actual (cluster) state.' },
+  // ── PYTHON / DATA SCIENCE ──
+  { term:'Python', cat:'Python', def:'A versatile, readable programming language. Used for web backends (Django, FastAPI), data science, ML, automation, and scripting. The most popular language in data science and AI. Easiest to learn as a second language after JavaScript.' },
+  { term:'pip', cat:'Python', def:'Python\'s package manager. Like npm for JavaScript. "pip install pandas" downloads and installs the pandas library from PyPI. Always run pip inside a virtual environment — never globally — to avoid dependency conflicts between projects.' },
+  { term:'virtual environment', cat:'Python', def:'An isolated Python environment per project with its own copy of pip and packages. Create: "python -m venv .venv". Activate: "source .venv/bin/activate" (Mac/Linux) or ".venv\Scripts\activate" (Windows). Always activate before pip installing.' },
+  { term:'pandas', cat:'Python', def:'The most popular Python library for data manipulation. Reads CSV, Excel, SQL databases, and JSON into DataFrames (tables in memory). Filter, group, join, and transform data with simple syntax. Essential for data science and data engineering roles.' },
+  { term:'NumPy', cat:'Python', def:'Numerical computing library for Python. Fast array operations using C under the hood. Mathematical functions, linear algebra, random number generation. The foundation that pandas, scikit-learn, and TensorFlow are built on.' },
+  { term:'scikit-learn', cat:'Python', def:'Python\'s most popular machine learning library. Implements regression, classification, clustering, and dimensionality reduction algorithms. Also includes data preprocessing, model evaluation (cross-validation, confusion matrix), and pipelines. Foundation of applied ML.' },
+  { term:'Jupyter', cat:'Python', def:'Interactive notebook environment mixing code, visualizations, and text in cells. Run code incrementally and see results immediately. Industry standard for data exploration and ML experimentation. Files end in .ipynb.' },
+  { term:'data frame', cat:'Python', def:'A 2D table data structure in pandas — rows and columns, like an in-memory spreadsheet. df[df["age"] > 25] filters rows. df[["name","email"]] selects columns. df.groupby("city").mean() aggregates. The central object in data science work.' },
+  { term:'overfitting', cat:'Python', def:'When an ML model learns the training data too well — memorizing noise instead of patterns. Performs great on training data but poorly on new data. Fix with: more training data, regularization (L1/L2), dropout, or cross-validation to detect it early.' },
+  { term:'requirements.txt', cat:'Python', def:'Python\'s equivalent of package.json. Lists all pip dependencies and their pinned versions. Generate with "pip freeze > requirements.txt". Others install with "pip install -r requirements.txt". Commit this file, never node_modules (or .venv).' },
+  // ── AI / ML ENGINEERING ──
+  { term:'LLM', cat:'AI Engineering', def:'Large Language Model. An AI trained on massive text datasets to understand and generate human language. Claude, GPT-4, Llama, and Gemini are LLMs. The foundation of the AI applications being built today. Outputs are probabilistic, not factual.' },
+  { term:'transformer', cat:'AI Engineering', def:'The neural network architecture behind all modern LLMs. From the 2017 paper "Attention Is All You Need." Uses attention mechanisms to understand relationships between all words in context simultaneously. GPT = Generative Pre-trained Transformer.' },
+  { term:'embedding', cat:'AI Engineering', def:'A numerical vector (list of numbers) representing text or other content in a way that captures semantic meaning. Similar concepts produce similar vectors. Enables semantic search — finding documents by meaning, not just keyword matching.' },
+  { term:'vector database', cat:'AI Engineering', def:'A database optimized for storing and searching embedding vectors. Pinecone, Chroma, Weaviate, pgvector (PostgreSQL extension). Used in RAG systems to find the most semantically similar context for an LLM. Core AI engineering infrastructure.' },
+  { term:'RAG', cat:'AI Engineering', def:'Retrieval-Augmented Generation. Giving an LLM relevant documents at query time so it can answer questions about private or recent data without retraining. Steps: embed documents → store in vector DB → at query time retrieve top matches → include in prompt.' },
+  { term:'fine-tuning', cat:'AI Engineering', def:'Training a pre-trained model on your specific dataset to adapt it to your domain or style. More expensive than RAG but makes the model inherently understand your domain. Fine-tuned models are faster and cheaper at inference than RAG for common queries.' },
+  { term:'prompt engineering', cat:'AI Engineering', def:'Crafting prompts to get better outputs from LLMs. Techniques: chain-of-thought (show reasoning steps), few-shot examples, role assignment, structured output format requests. Important skill but often less reliable than RAG or fine-tuning for accuracy.' },
+  { term:'token', cat:'AI Engineering', def:'The unit an LLM processes. Roughly 4 characters or 0.75 words. "hello world" ≈ 2 tokens. API pricing is charged per input + output token. Context windows are measured in tokens. Longer prompts cost more and approach context limits faster.' },
+  { term:'context window', cat:'AI Engineering', def:'Maximum text an LLM can process at once, measured in tokens. Claude supports 200K tokens (≈150K words). Longer contexts cost more per token. Content beyond the context window is simply ignored — the model cannot see it.' },
+  { term:'hallucination', cat:'AI Engineering', def:'When an LLM generates confident-sounding but factually wrong information. LLMs predict what text should come next — they do not look up facts. Mitigate with RAG (ground responses in real documents), output validation, and human review for critical outputs.' },
+  { term:'temperature', cat:'AI Engineering', def:'Controls LLM output randomness. 0 = deterministic, always picks the most probable next token. 1.0+ = creative and varied. Use low temperature (0-0.3) for code, data extraction, and factual tasks. Higher for creative writing and brainstorming.' },
+  { term:'LangChain', cat:'AI Engineering', def:'A framework for building LLM applications. Provides abstractions for chains, agents, RAG pipelines, memory, and tool use. Popular but adds significant complexity. Evaluate whether direct API calls would be simpler before adopting LangChain.' },
+  { term:'MLOps', cat:'AI Engineering', def:'Machine Learning Operations. Practices for deploying, monitoring, and maintaining ML models in production. Covers model versioning, feature stores, data pipelines, drift detection, and automated retraining. Similar to DevOps but applied to ML systems.' },
+  { term:'LLMOps', cat:'AI Engineering', def:'LLM Operations. MLOps practices specific to large language models: prompt versioning, output quality monitoring, A/B testing prompts, cost management per query, latency optimization, and fine-tuning pipelines. Emerging but critical discipline.' },
+  { term:'agent', cat:'AI Engineering', def:'An LLM that can take actions by calling tools — search the web, query a database, write and run code, call APIs. The model decides which tool to use and what arguments to pass, loops until the task is complete. Agentic AI is the frontier of applied ML.' },
+  { term:'function calling', cat:'AI Engineering', def:'Telling an LLM about available functions it can invoke. The model outputs structured JSON describing which function to call and with what arguments. The app executes the function and feeds results back. Foundation of agentic AI systems.' },
+  { term:'semantic search', cat:'AI Engineering', def:'Searching by meaning rather than exact keyword match. Embed the query into a vector, find the most similar document vectors in the database using cosine similarity. Returns conceptually related results even with different wording. Core AI engineering skill.' },
+  // ── FRONTEND / WEB DEV ──
+  { term:'HTML', cat:'Web Dev', def:'HyperText Markup Language. The skeleton of every webpage. Tags define structure: <h1> headings, <p> paragraphs, <a> links, <button> buttons, <form> forms, <div> containers. Browsers parse HTML into the Document Object Model (DOM).' },
+  { term:'CSS', cat:'Web Dev', def:'Cascading Style Sheets. Controls visual appearance: colors, fonts, spacing, animations, and layout. Cascading means styles inherit and can be overridden. Modern CSS: Flexbox for 1D layout, Grid for 2D layout. Tailwind makes CSS classes composable.' },
+  { term:'TypeScript', cat:'Web Dev', def:'JavaScript with static types. Catches type errors at compile time instead of runtime. Widely adopted in production codebases — React, Next.js, and Node.js all have full TypeScript support. Learning TypeScript significantly accelerates your career velocity.' },
+  { term:'React', cat:'Web Dev', def:'Meta\'s JavaScript library for building user interfaces. Component-based: build small reusable pieces that compose into complex UIs. Uses a virtual DOM to efficiently update only changed parts. The most in-demand frontend framework by a wide margin.' },
+  { term:'Next.js', cat:'Web Dev', def:'The production React framework. Adds file-based routing, server-side rendering, static site generation, API routes, and image optimization. Deploy to Vercel in one command. The standard choice for full-stack React applications.' },
+  { term:'component', cat:'Web Dev', def:'A reusable, self-contained piece of UI — a button, a card, a modal, a navigation bar. Takes in props (data) and renders HTML. React and Vue are built on components. Think of them as LEGO bricks: simple pieces that compose into complex interfaces.' },
+  { term:'state', cat:'Web Dev', def:'Data that can change over time and, when changed, triggers a re-render. In React: useState hook stores state. Examples: is this dropdown open? what is the current form input? which tab is selected? Lift state up when multiple components need it.' },
+  { term:'hook', cat:'Web Dev', def:'A special React function starting with "use" that adds capabilities to functional components. useState for state, useEffect for side effects (API calls, subscriptions), useCallback for memoized functions. Hooks replaced class components in modern React.' },
+  { term:'SPA', cat:'Web Dev', def:'Single Page Application. Loads once; JavaScript handles navigation without full page reloads. Feels faster after initial load. React, Vue, Angular apps are SPAs. Tradeoff: slower first load and SEO challenges without SSR.' },
+  { term:'SSR', cat:'Web Dev', def:'Server-Side Rendering. HTML is generated on the server before sending to the browser. Better SEO and faster perceived initial load than a pure SPA. Next.js getServerSideProps enables SSR. Tradeoff: higher server load per request.' },
+  { term:'SSG', cat:'Web Dev', def:'Static Site Generation. HTML is pre-built at deploy time, not per request. Fastest possible delivery — serve from CDN. Next.js getStaticProps enables this. Best for content that does not change per user: blogs, marketing pages, docs.' },
+  { term:'Tailwind', cat:'Web Dev', def:'Utility-first CSS framework. Style elements directly with class names: "bg-blue-500 text-white rounded-lg p-4". No CSS files to maintain. Composable, consistent, and fast to build with. The modern standard for styling React applications.' },
+  { term:'shadcn/ui', cat:'Web Dev', def:'A collection of pre-built, professionally designed React components using Tailwind CSS. Copy-paste components into your project rather than installing a package. Highly customizable. The modern choice for building polished UIs without designing from scratch.' },
+  { term:'Preact', cat:'Web Dev', def:'A lightweight 3KB alternative to React with nearly the same API. Most React code works unchanged. Used for embeddable widgets and performance-critical apps where React\'s 40KB bundle would be too large. Good for scripts embedded on third-party sites.' },
+  { term:'HTTP status codes', cat:'Web Dev', def:'2xx = success (200 OK, 201 Created, 204 No Content). 3xx = redirect (301 Moved Permanently, 304 Not Modified). 4xx = client error (400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found). 5xx = server error (500 Internal Server Error, 503 Service Unavailable).' },
+  { term:'Vite', cat:'Web Dev', def:'Ultra-fast frontend build tool and dev server. Starts instantly using native ES modules in development. Replaced Create React App as the standard. Used by React, Vue, and Svelte projects. Production builds use Rollup for optimized bundles.' },
+  { term:'responsive design', cat:'Web Dev', def:'Building interfaces that work across all screen sizes. CSS media queries (@media) adjust layouts at breakpoints. Tailwind\'s sm:/md:/lg:/xl: prefixes make this declarative. Mobile-first approach: design for small screens first, then scale up.' },
+  // ── BACKEND ENGINEERING ──
+  { term:'microservices', cat:'Backend', def:'Architecture where an app is split into small, independent services communicating via APIs. Each deployed separately. Netflix, Uber, Amazon use this. Complex to operate — start with a monolith and split only when you have clear scaling boundaries.' },
+  { term:'monolith', cat:'Backend', def:'All features in one codebase, deployed together. Simple to develop, test, and deploy initially. Most successful startups run monoliths for years. "Monolith first" is the recommended pattern — split into microservices only when the monolith causes real pain.' },
+  { term:'caching', cat:'Backend', def:'Storing results of expensive operations (database queries, API calls) temporarily for fast future access. Redis is the standard cache. Cache-aside: check cache first, on miss query DB and store result. Cache invalidation is the hard part.' },
+  { term:'message queue', cat:'Backend', def:'A buffer holding messages between producers and consumers, decoupling them so they run at different speeds. AWS SQS, RabbitMQ, Kafka. Producer puts a job in; workers process at their own pace. Handles traffic spikes without losing data.' },
+  { term:'API gateway', cat:'Backend', def:'A single entry point for all API clients, routing requests to backend services. Handles authentication, rate limiting, SSL termination, and request/response transformation centrally. AWS API Gateway, Kong, nginx can all serve this role.' },
+  { term:'BaaS', cat:'Backend', def:'Backend-as-a-Service. A managed backend platform providing database, authentication, storage, and real-time subscriptions. Supabase and Firebase are BaaS platforms. Dramatically faster to build with than rolling your own backend from scratch.' },
+  { term:'edge function', cat:'Backend', def:'A serverless function running at edge locations close to users worldwide, not in a central data center. Sub-10ms cold starts. Supabase Edge Functions, Cloudflare Workers, Vercel Edge Functions. Written in Deno or V8 isolates.' },
+  { term:'Deno', cat:'Backend', def:'A secure JavaScript/TypeScript runtime built by Node.js creator Ryan Dahl. Imports via URL (no node_modules). Sandboxed by default — must explicitly grant file/network permissions. Used in Supabase Edge Functions and Deno Deploy.' },
+  { term:'webhook', cat:'Backend', def:'A notification sent by one system to another when an event occurs. Stripe sends a webhook to your server when a payment succeeds. Event-driven — unlike polling (checking repeatedly), webhooks push data immediately when it happens.' },
+  { term:'realtime', cat:'Backend', def:'Data that updates instantly without page refresh. Powered by WebSockets or Server-Sent Events. Supabase Realtime uses PostgreSQL change-data-capture to broadcast database changes to clients. Used for live chat, notifications, and collaborative tools.' },
+  { term:'integration', cat:'Backend', def:'A connection between your app and an external service (Stripe, Twilio, Salesforce, Slack). Each integration is an external dependency that can fail. Always handle failures gracefully with retries and fallbacks. Webhook verification is essential for security.' },
+  { term:'LOC', cat:'Backend', def:'Lines of Code. A rough measure of codebase size. 50,000 LOC is a substantial application. More LOC generally means more complexity and maintenance burden. Delete dead code aggressively. Quality and clarity matter far more than quantity.' },
+  { term:'mock', cat:'Backend', def:'A fake version of a dependency (database, API, email service) used in tests. Mocks make tests fast and isolated. But they can mask problems if they do not accurately mirror the real service. Test against real dependencies (integration tests) for critical paths.' },
+  { term:'test coverage', cat:'Backend', def:'The percentage of your code executed by automated tests. 80%+ is generally considered good. Measured by Istanbul/nyc (JavaScript) or coverage.py (Python). High test coverage lets you refactor confidently without fear of breaking hidden behavior.' },
+  { term:'refactor', cat:'Backend', def:'Rewriting code to be cleaner or more maintainable without changing what it does. Like renovating a house — same rooms, better structure. Write tests before refactoring so you can verify nothing broke. Never refactor and add features at the same time.' },
+  { term:'monolith component', cat:'Web Dev', def:'A single React component file that has grown too large — 1,000+ lines doing too many things. Hard to test, read, and maintain. Split into smaller, focused components with single responsibilities. The frontend equivalent of a "God class" in backend code.' },
+  { term:'MIME type', cat:'Web Dev', def:'A label identifying what type a file is: image/jpeg, application/pdf, text/html, application/json. Servers include this in the Content-Type header so browsers know how to handle responses. Always validate MIME types server-side when accepting file uploads.' },
+  { term:'dependency', cat:'Backend', def:'A package or library your code relies on. Listed in package.json or requirements.txt. Each dependency is a potential vulnerability. Run "npm audit" or "pip-audit" regularly. Keep dependencies minimal, updated, and from trusted sources.' },
+  { term:'Stripe', cat:'Payments', def:'Industry-standard payment processing platform. Handles cards, Apple Pay, subscriptions, invoices, and payouts via API. PCI-compliant — Stripe handles sensitive card data so you do not have to store it. Verify webhook signatures to prevent payment spoofing.' },
+  { term:'Supabase', cat:'Backend', def:'Open-source Firebase alternative. Provides PostgreSQL database, authentication, storage, edge functions, and real-time subscriptions. Can be self-hosted or used as managed SaaS. BaaS that dramatically speeds up backend development for any stack.' },
+  { term:'Resend', cat:'Backend', def:'A developer-focused email delivery API. Send transactional emails (welcome, password reset, receipts) programmatically with excellent deliverability. Modern alternative to SendGrid and Mailgun with a clean SDK and React Email template support.' },
+  { term:'production', cat:'Web Dev', def:'The live version of your app that real users interact with. Must be secure, stable, and fast. Separate from "staging" (pre-production testing) and "development" (local). Never test unreviewed code directly in production.' },
+  { term:'deployment', cat:'Web Dev', def:'Publishing your app so real users can access it. Involves building code, uploading to servers, setting environment variables, running migrations, and verifying health checks. CI/CD pipelines automate this process.' },
+  { term:'API', cat:'Networking', def:'Application Programming Interface. A defined way for two systems to communicate. Your app calls the Stripe API to charge a card; Stripe responds with the result. REST and GraphQL are the two most common API styles. Every integration uses an API.' },
+  // ── CERTIFICATIONS ──
+  { term:'CompTIA Security+', cat:'Certifications', def:'The most popular entry-level cybersecurity certification (SY0-701). Covers threats, cryptography, network security, IAM, and incident response. Required by many government and defense employers. Good first security cert — opens doors to SOC and security engineer roles.' },
+  { term:'CompTIA Network+', cat:'Certifications', def:'Vendor-neutral networking certification. Covers TCP/IP, DNS, DHCP, routing, switching, network security, and troubleshooting. Good foundation before Security+ or any cloud certification. Required by many IT infrastructure roles.' },
+  { term:'CompTIA A+', cat:'Certifications', def:'Entry-level IT certification covering hardware, operating systems, networking basics, and troubleshooting. Most popular IT certification. Good starting point for IT support roles before specializing in cloud, security, or development.' },
+  { term:'CompTIA CySA+', cat:'Certifications', def:'Cybersecurity Analyst+ certification. Covers threat detection, incident response, vulnerability management, security architecture, and compliance. Blue team focused. SOC analyst and security operations roles. Requires Security+ level knowledge.' },
+  { term:'CompTIA PenTest+', cat:'Certifications', def:'Penetration Testing+ certification. Covers planning, scoping, reconnaissance, vulnerability exploitation, post-exploitation, and reporting. Practical skills for ethical hacking and red team roles. Vendor-neutral alternative to CEH.' },
+  { term:'AWS Solutions Architect', cat:'Certifications', def:'The most popular AWS certification. Covers designing highly available, cost-effective, and secure AWS architectures. Tests EC2, S3, VPC, IAM, RDS, Lambda, CloudFront, and more. Associate level is the most employer-requested AWS certification.' },
+  { term:'AWS Developer Associate', cat:'Certifications', def:'AWS certification for developers. Covers Lambda, DynamoDB, API Gateway, CodePipeline, SQS, SNS, and deployment patterns (blue/green, canary). Ideal for backend and full-stack developers working daily with AWS services.' },
+  { term:'AWS Cloud Practitioner', cat:'Certifications', def:'AWS entry-level certification. Broad overview of cloud concepts, AWS services, pricing, and the shared responsibility model. The starting point before Solutions Architect Associate. 1-3 months of part-time study to prepare.' },
+  { term:'CISSP', cat:'Certifications', def:'Certified Information Systems Security Professional by ISC2. The gold standard senior security certification. Covers 8 domains including cryptography, network security, IAM, and security operations. Requires 5 years experience. Opens CISO-track roles.' },
+  { term:'CKA', cat:'Certifications', def:'Certified Kubernetes Administrator. Hands-on 2-hour exam solving real Kubernetes problems in a live cluster — no multiple choice. Highly valued for cloud-native and DevOps roles. Most practical certification in the Kubernetes ecosystem.' },
+  { term:'Terraform Associate', cat:'Certifications', def:'HashiCorp Terraform certification. Covers HCL syntax, state management, modules, provider configuration, and workspace strategies. Pairs well with any cloud certification. Shows employers you can manage infrastructure as code professionally.' },
+];
+
+let filteredGlossary = [...GLOSSARY];
+
+function renderGlossary(items) {
+  const sorted = [...items].sort((a, b) => a.term.localeCompare(b.term));
+  document.getElementById('glos-list').innerHTML = sorted.map(g => `
+    <div class="glos-item">
+      <div class="glos-cat">${g.cat}${g.isNew ? ' <span style="color:var(--green);font-size:9px;font-weight:700">● NEW</span>' : ''}${g.cat === 'Learned' ? ' <span style="color:var(--purple);font-size:9px">✦ auto-saved</span>' : ''}</div>
+      <div class="glos-term">${g.term}</div>
+      <div class="glos-def">${g.def}</div>
+    </div>
+  `).join('');
+}
+renderGlossary(GLOSSARY);
+
+function filterGlossary(q) {
+  const lq = q.toLowerCase();
+  const filtered = GLOSSARY.filter(g =>
+    g.term.toLowerCase().includes(lq) ||
+    g.def.toLowerCase().includes(lq) ||
+    g.cat.toLowerCase().includes(lq)
+  );
+  renderGlossary(filtered);
+}
+
+async function loadServerGlossary() {
+  try {
+    const res = await fetch('/glossary');
+    const data = await res.json();
+    let added = 0;
+    data.forEach(entry => {
+      if (!GLOSSARY.some(g => g.term.toLowerCase() === entry.term.toLowerCase())) {
+        GLOSSARY.push(entry);
+        added++;
+      }
+    });
+    if (added > 0) renderGlossary(GLOSSARY);
+  } catch {}
+}
+loadServerGlossary();
+
+// ── TABS ─────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tp').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.tab + '-panel').classList.add('active');
+  });
+});
+
+// ── DRAG ─────────────────────────────────────────────────────────────────────
+const panel = document.getElementById('panel');
+const header = document.getElementById('header');
+let dragging = false, ox = 0, oy = 0;
+
+header.addEventListener('mousedown', e => {
+  dragging = true;
+  const r = panel.getBoundingClientRect();
+  ox = e.clientX - r.left; oy = e.clientY - r.top;
+  document.body.style.cursor = 'grabbing';
+});
+document.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  let x = Math.max(0, Math.min(window.innerWidth  - panel.offsetWidth,  e.clientX - ox));
+  let y = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, e.clientY - oy));
+  panel.style.right = 'auto';
+  panel.style.left = x + 'px';
+  panel.style.top  = y + 'px';
+});
+document.addEventListener('mouseup', () => { dragging = false; document.body.style.cursor = ''; });
+
+// ── WEBSOCKET + STREAMING ────────────────────────────────────────────────────
+let ws, reconnTimer;
+let cmdCount = 0;
+let activeCard = null; // the card currently streaming into
+let activeCursor = null;
+
+function connect() {
+  ws = new WebSocket('ws://localhost:3737');
+
+  ws.onopen = () => {
+    document.getElementById('ws-dot').classList.add('on');
+    document.getElementById('conn-status').textContent = 'Connected ✓';
+    document.getElementById('conn-status').style.color = 'var(--green)';
+    document.getElementById('footer-msg').textContent = 'Connected — run a command!';
+    clearTimeout(reconnTimer);
+    loadServerGlossary();
+  };
+
+  ws.onclose = () => {
+    document.getElementById('ws-dot').classList.remove('on');
+    document.getElementById('conn-status').textContent = 'Not connected';
+    document.getElementById('conn-status').style.color = 'var(--red)';
+    reconnTimer = setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => ws.close();
+
+  ws.onmessage = e => {
+    try { handle(JSON.parse(e.data)); } catch {}
+  };
+}
+
+function handle(msg) {
+  const feed = document.getElementById('feed');
+
+  if (msg.type === 'ready') return;
+
+  if (msg.type === 'glossary_add') {
+    let added = 0;
+    msg.terms.forEach(entry => {
+      if (!GLOSSARY.some(g => g.term.toLowerCase() === entry.term.toLowerCase())) {
+        GLOSSARY.push({ ...entry, isNew: true });
+        added++;
+      }
+    });
+    if (added > 0) {
+      renderGlossary(GLOSSARY);
+      document.getElementById('footer-msg').textContent = `📚 ${added} new term${added > 1 ? 's' : ''} saved to glossary`;
+      setTimeout(() => { document.getElementById('footer-msg').textContent = 'Ready'; }, 3000);
+    }
+    return;
+  }
+
+  // Proactive pattern alerts — appear BEFORE Claude even responds
+  if (msg.type === 'patterns') {
+    msg.patterns.forEach(p => {
+      const div = document.createElement('div');
+      div.className = `alert-card alert-${p.severity}`;
+      div.innerHTML = `<div class="alert-flag">${p.flag}</div><div class="alert-tip">${p.tip}</div>`;
+      feed.appendChild(div);
+    });
+    nudgeOrScroll();
+    return;
+  }
+
+  // New command/question starts — create a card
+  if (msg.type === 'start') {
+    cmdCount++;
+    document.getElementById('footer-count').textContent = cmdCount + ' commands';
+
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    const isQ = msg.cardType === 'question';
+    const exitBadge = isQ ? `<span class="badge badge-q">Question</span>` :
+      `<span class="badge" id="exit-${cmdCount}">…</span>`;
+
+    card.innerHTML = `
+      <div class="card-head">
+        <span class="prompt-char">${isQ ? '💬' : '$'}</span>
+        <span class="cmd-text">${esc(msg.label)}</span>
+        ${exitBadge}
+        <span class="card-time">${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>
+      </div>
+      <div class="card-body" id="body-${cmdCount}"></div>
+    `;
+    feed.appendChild(card);
+    nudgeOrScroll();
+
+    // Set up streaming target
+    activeCard = { id: cmdCount, isQ };
+    activeCursor = document.createElement('span');
+    activeCursor.className = 'cursor';
+    document.getElementById(`body-${cmdCount}`).appendChild(activeCursor);
+    document.getElementById('footer-msg').textContent = 'Explaining…';
+    return;
+  }
+
+  // Streaming chunk — append text before cursor
+  if (msg.type === 'chunk' && activeCard) {
+    const body = document.getElementById(`body-${activeCard.id}`);
+    if (!body) return;
+    const txt = document.createTextNode(msg.text);
+    body.insertBefore(txt, activeCursor);
+    smartScroll();
+    return;
+  }
+
+  // Done — remove cursor, format body, update badge
+  if (msg.type === 'done' && activeCard) {
+    if (activeCursor && activeCursor.parentNode) activeCursor.remove();
+    activeCursor = null;
+
+    const doneBody = document.getElementById(`body-${activeCard.id}`);
+    if (doneBody) doneBody.innerHTML = renderMarkdown(doneBody.textContent);
+
+    const badge = document.getElementById(`exit-${activeCard.id}`);
+    if (badge && msg.exitCode !== undefined) {
+      badge.textContent = msg.exitCode === 0 ? '✓ OK' : '✗ Error';
+      badge.className = 'badge ' + (msg.exitCode === 0 ? 'badge-ok' : 'badge-fail');
+    } else if (badge && activeCard.isQ) {
+      badge.remove();
+    }
+
+    activeCard = null;
+    document.getElementById('footer-msg').textContent = 'Ready';
+    smartScroll();
+    return;
+  }
+}
+
+function showLearnTab() {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tp').forEach(p => p.classList.remove('active'));
+  document.querySelector('[data-tab="learn"]').classList.add('active');
+  document.getElementById('learn-panel').classList.add('active');
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderMarkdown(raw) {
+  let h = raw
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`\n]+)`/g, '<code class="inline-code">$1</code>');
+
+  const sections = [
+    [/^(⚡[^\n]+)/gm,  'var(--text)',   '700'],
+    [/^(📖[^\n]+)/gm,  'var(--purple)', '700'],
+    [/^(✅[^\n]+)/gm,  'var(--green)',  '700'],
+    [/^(❌[^\n]+)/gm,  'var(--red)',    '700'],
+    [/^(💡[^\n]+)/gm,  'var(--amber)',  '700'],
+    [/^(🔐[^\n]+)/gm,  'var(--red)',    '700'],
+    [/^(➡️[^\n]+)/gm, 'var(--blue)',   '700'],
+  ];
+  sections.forEach(([re, color, weight]) => {
+    h = h.replace(re, `<span class="sec-head" style="color:${color};font-weight:${weight}">$1</span>`);
+  });
+
+  return h.replace(/\n/g, '<br>');
+}
+
+// ── ASK ──────────────────────────────────────────────────────────────────────
+async function sendQuestion() {
+  const input = document.getElementById('q-input');
+  const btn   = document.getElementById('ask-btn');
+  const q = input.value.trim();
+  if (!q || !ws || ws.readyState !== 1) return;
+
+  btn.disabled = true; btn.textContent = 'Asking…';
+  ws.send(JSON.stringify({ type: 'question', text: q }));
+  input.value = '';
+  showLearnTab();
+  btn.disabled = false; btn.textContent = 'Ask →';
+}
+
+document.getElementById('q-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendQuestion();
+});
+
+// ── SCROLL CONTROL ───────────────────────────────────────────────────────────
+// Simple flag: true = user is at bottom and wants to follow new content.
+// No isAutoScrolling guard — that was the bug (it blocked user scroll detection).
+let following = true;
+let pendingCount = 0;
+let savedScrollTop = 0;
+
+const feed = document.getElementById('feed');
+
+feed.addEventListener('scroll', () => {
+  const atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 60;
+  following = atBottom;
+  if (atBottom) clearNudge();
+});
+
+function smartScroll() {
+  if (!following) return;
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function nudgeOrScroll() {
+  const learnActive = document.querySelector('[data-tab="learn"]').classList.contains('active');
+  if (!learnActive) {
+    document.querySelector('[data-tab="learn"]').classList.add('tab-dot');
+    return;
+  }
+  if (!following) {
+    pendingCount++;
+    document.getElementById('new-msg-count').textContent = pendingCount;
+    document.getElementById('new-msg-btn').style.display = 'block';
+  } else {
+    smartScroll();
+  }
+}
+
+function clearNudge() {
+  pendingCount = 0;
+  document.getElementById('new-msg-btn').style.display = 'none';
+}
+
+function scrollToLatest() {
+  const learnActive = document.querySelector('[data-tab="learn"]').classList.contains('active');
+  if (!learnActive) showLearnTab();
+  savedScrollTop = feed.scrollTop;
+  document.getElementById('back-btn').style.display = 'block';
+  following = true;
+  clearNudge();
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function returnToReading() {
+  feed.scrollTop = savedScrollTop;
+  document.getElementById('back-btn').style.display = 'none';
+}
+
+document.querySelector('[data-tab="learn"]').addEventListener('click', () => {
+  document.querySelector('[data-tab="learn"]').classList.remove('tab-dot');
+});
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+connect();
+</script>
+</body>
+</html>
