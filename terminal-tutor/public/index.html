@@ -358,6 +358,40 @@ body {
   box-shadow: 0 0 6px var(--purple);
 }
 
+/* ── SECURITY TAB ── */
+#security-panel { flex-direction: column; overflow: hidden; }
+#security-scroll { overflow-y: auto; flex: 1; padding: 12px 14px; }
+.sec-tool-block {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px; margin-bottom: 12px;
+}
+.sec-tool-head { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.sec-tool-desc { font-size: 11px; color: var(--text-dim); line-height: 1.6; margin-bottom: 10px; }
+.sec-tool-inputs { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.sec-tool-inputs input {
+  background: var(--bg); border: 1px solid var(--border2); border-radius: 8px;
+  color: var(--text); padding: 6px 10px; font-size: 11px; outline: none; width: 100%;
+}
+.sec-tool-inputs input:focus { border-color: var(--purple); }
+.sec-tool-block button {
+  background: var(--purple); color: #fff; border: none; border-radius: 8px;
+  padding: 6px 14px; font-size: 11px; font-weight: 700; cursor: pointer;
+}
+.sec-tool-block button:hover { background: var(--purple-dim); }
+#rls-results, #secret-results, #watch-status { margin-top: 10px; font-size: 11px; }
+.rls-issue { padding: 6px 8px; border-radius: 6px; margin-bottom: 4px; line-height: 1.5; }
+.rls-critical { background: rgba(248,113,113,.1); border-left: 3px solid var(--red); color: var(--red); }
+.rls-high { background: rgba(251,191,36,.1); border-left: 3px solid var(--amber); color: var(--amber); }
+.rls-ok { color: var(--green); font-weight: 600; }
+.secret-hit { padding: 5px 8px; border-radius: 6px; margin-bottom: 4px; background: rgba(248,113,113,.1); border-left: 3px solid var(--red); }
+.secret-label { color: var(--red); font-weight: 700; font-size: 10px; }
+.secret-file  { color: var(--text-dim); font-family: var(--mono); font-size: 10px; }
+.sec-check-list { margin-top: 8px; }
+.sec-check { font-size: 11px; color: var(--text-dim); padding: 3px 0; line-height: 1.5; }
+.sec-not-yet { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.sec-check-label { font-size: 10px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .5px; }
+.sec-dim { opacity: 0.5; }
+
 /* ── PROMPTS TAB ── */
 #prompts-panel { flex-direction: column; overflow: hidden; }
 #prompts-add { padding: 8px 14px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
@@ -446,6 +480,7 @@ body {
     <div class="tab" data-tab="glossary">📚 Glossary</div>
     <div class="tab" data-tab="career">🎓 Career</div>
     <div class="tab" data-tab="prompts">📋 Prompts</div>
+    <div class="tab" data-tab="security">🔐 Security</div>
     <div class="tab" data-tab="setup">⚙️ Setup</div>
   </div>
 
@@ -681,6 +716,72 @@ body {
           <div class="career-skill-item">• Run <code>docker build</code> and <code>kubectl apply</code></div>
           <div class="career-skill-item">• Write Terraform for infrastructure as code</div>
           <div class="career-skill-item">• Monitor systems with CloudWatch / Prometheus</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- SECURITY -->
+  <div class="tp" id="security-panel">
+    <div id="security-scroll">
+
+      <div class="sec-tool-block">
+        <div class="sec-tool-head">🔐 Supabase RLS Scanner</div>
+        <p class="sec-tool-desc">Checks every public table for: RLS disabled, zero policies, or USING (true) open access. Runs automatically when you push migrations. Also callable from terminal: <code class="inline-code">scan-rls</code></p>
+        <div class="sec-tool-inputs">
+          <input id="supa-url" placeholder="https://xxxx.supabase.co" />
+          <input id="supa-key" type="password" placeholder="service_role key" />
+        </div>
+        <button onclick="runRlsScan()">Scan RLS →</button>
+        <div id="rls-results"></div>
+      </div>
+
+      <div class="sec-tool-block">
+        <div class="sec-tool-head">🔍 Secret File Scanner</div>
+        <p class="sec-tool-desc">Scans your project files for leaked API keys, JWTs, AWS credentials, Supabase keys, and hardcoded passwords. Also: <code class="inline-code">scan-secrets</code></p>
+        <div class="sec-tool-inputs">
+          <input id="scan-path" placeholder="Project path (e.g. /Users/you/myapp)" />
+        </div>
+        <button onclick="runSecretScan()">Scan Secrets →</button>
+        <div id="secret-results"></div>
+      </div>
+
+      <div class="sec-tool-block">
+        <div class="sec-tool-head">👁 Auth File Watcher</div>
+        <p class="sec-tool-desc">Watches your auth, middleware, and Supabase client files. When they change, Claude auto-reviews them for security flaws — broken auth flows, missing session checks, exposed keys. Also: <code class="inline-code">watch-auth</code></p>
+        <div class="sec-tool-inputs">
+          <input id="watch-path" placeholder="Project path to watch" />
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="startWatcher()">Start Watching →</button>
+          <button id="stop-watch-btn" onclick="stopWatcher()" style="display:none">Stop</button>
+        </div>
+        <div id="watch-status"></div>
+      </div>
+
+      <div class="sec-tool-block">
+        <div class="sec-tool-head">📋 What Terminal Tutor catches automatically</div>
+        <div class="sec-check-list">
+          <div class="sec-check">✅ RLS disabled after <code class="inline-code">supabase db push</code></div>
+          <div class="sec-check">✅ <code class="inline-code">USING (true)</code> open access policies</div>
+          <div class="sec-check">✅ Supabase service_role key in commands</div>
+          <div class="sec-check">✅ Hardcoded API keys and passwords</div>
+          <div class="sec-check">✅ <code class="inline-code">curl --insecure</code> — TLS bypass</div>
+          <div class="sec-check">✅ <code class="inline-code">chmod 777</code> — open file permissions</div>
+          <div class="sec-check">✅ <code class="inline-code">git add .</code> before .gitignore check</div>
+          <div class="sec-check">✅ Force push to main</div>
+          <div class="sec-check">✅ AWS CLI without named profile</div>
+          <div class="sec-check">✅ Public S3 bucket ACL</div>
+          <div class="sec-check">⚡ Auth file changes → instant Claude security review</div>
+          <div class="sec-check">⚡ npm install → supply chain risk alert</div>
+        </div>
+        <div class="sec-not-yet">
+          <div class="sec-check-label">Not yet (coming soon):</div>
+          <div class="sec-check sec-dim">○ JWT expiry and rotation checks</div>
+          <div class="sec-check sec-dim">○ CORS misconfiguration detection</div>
+          <div class="sec-check sec-dim">○ SQL injection in raw query strings</div>
+          <div class="sec-check sec-dim">○ Broken OAuth redirect URI validation</div>
         </div>
       </div>
 
@@ -1099,6 +1200,32 @@ function handle(msg) {
 
   if (msg.type === 'ready') return;
 
+  if (msg.type === 'rls_scan') {
+    const el = document.getElementById('rls-results');
+    if (el) renderRlsResults(msg.result, el);
+    const tab = document.querySelector('[data-tab="security"]');
+    if (msg.result.issues && msg.result.issues.length) tab.classList.add('tab-dot');
+    return;
+  }
+
+  if (msg.type === 'secret_scan') {
+    const el = document.getElementById('secret-results');
+    if (el && msg.findings) {
+      if (!msg.findings.length) {
+        el.innerHTML = '<div style="color:var(--green);font-weight:600">✅ No secrets found.</div>';
+      } else {
+        el.innerHTML = `<div style="color:var(--red);font-weight:700;margin-bottom:6px">🚨 ${msg.findings.length} secret(s) found</div>` +
+          msg.findings.map(f => `<div class="secret-hit"><div class="secret-label">${esc(f.label)}</div><div class="secret-file">${esc(f.file)}</div></div>`).join('');
+      }
+    }
+    return;
+  }
+
+  if (msg.type === 'file_change') {
+    document.querySelector('[data-tab="learn"]').classList.add('tab-dot');
+    return;
+  }
+
   if (msg.type === 'prompt_add') {
     if (!PROMPTS.some(p => p.id === msg.prompt.id)) {
       PROMPTS.unshift(msg.prompt);
@@ -1480,6 +1607,61 @@ function sendPromptToAsk(id, e) {
   document.getElementById('ask-panel').classList.add('active');
   document.getElementById('q-input').value = p.text;
   document.getElementById('q-input').focus();
+}
+
+// ── SECURITY TOOLS ───────────────────────────────────────────────────────────
+async function runRlsScan() {
+  const url = document.getElementById('supa-url').value.trim();
+  const key = document.getElementById('supa-key').value.trim();
+  const el  = document.getElementById('rls-results');
+  el.innerHTML = '<span style="color:var(--text-muted)">Scanning…</span>';
+  try {
+    const res  = await fetch('/scan-rls', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ supabaseUrl: url, serviceKey: key }) });
+    const data = await res.json();
+    renderRlsResults(data, el);
+  } catch (e) { el.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`; }
+}
+
+function renderRlsResults(data, el) {
+  if (data.error) { el.innerHTML = `<span style="color:var(--red)">${esc(data.error)}</span>`; return; }
+  if (!data.issues.length) {
+    el.innerHTML = `<div class="rls-ok">✅ All ${data.tables} tables have RLS enabled with policies. No open access found.</div>`;
+    return;
+  }
+  el.innerHTML = `<div style="color:var(--text-muted);font-size:10px;margin-bottom:6px">${data.tables} tables · ${data.policies} policies · ${data.issues.length} issue(s)</div>` +
+    data.issues.map(i => `<div class="rls-issue rls-${i.severity}"><strong>${esc(i.table)}</strong> — ${esc(i.issue)}<br><span style="font-size:10px;opacity:.8">${esc(i.detail)}</span></div>`).join('');
+}
+
+async function runSecretScan() {
+  const scanPath = document.getElementById('scan-path').value.trim();
+  const el = document.getElementById('secret-results');
+  el.innerHTML = '<span style="color:var(--text-muted)">Scanning…</span>';
+  try {
+    const res  = await fetch('/scan-secrets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ path: scanPath }) });
+    const data = await res.json();
+    if (!data.findings.length) { el.innerHTML = '<div style="color:var(--green);font-weight:600">✅ No secrets found in scanned files.</div>'; return; }
+    el.innerHTML = `<div style="color:var(--red);font-weight:700;margin-bottom:6px">🚨 ${data.findings.length} potential secret(s) found</div>` +
+      data.findings.map(f => `<div class="secret-hit"><div class="secret-label">${esc(f.label)}</div><div class="secret-file">${esc(f.file)}</div></div>`).join('');
+  } catch (e) { el.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`; }
+}
+
+async function startWatcher() {
+  const watchPath = document.getElementById('watch-path').value.trim();
+  const el = document.getElementById('watch-status');
+  const res  = await fetch('/watch/start', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ path: watchPath }) });
+  const data = await res.json();
+  if (data.ok) {
+    el.innerHTML = `<span style="color:var(--green)">👁 Watching ${esc(watchPath || 'project')} — auth file changes will auto-review in Learn tab</span>`;
+    document.getElementById('stop-watch-btn').style.display = 'inline-block';
+  } else {
+    el.innerHTML = `<span style="color:var(--red)">${esc(data.error)}</span>`;
+  }
+}
+
+async function stopWatcher() {
+  await fetch('/watch/stop', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+  document.getElementById('watch-status').innerHTML = '<span style="color:var(--text-muted)">Watcher stopped.</span>';
+  document.getElementById('stop-watch-btn').style.display = 'none';
 }
 
 // ── INIT ─────────────────────────────────────────────────────────────────────

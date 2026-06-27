@@ -188,6 +188,55 @@ const PATTERNS = [
     severity: 'warning',
     flag: '⚠️ AWS CLI: Consider using named profiles',
     tip: 'Use --profile to specify a named IAM profile (never use root account for CLI). Create profiles with "aws configure --profile myapp". IAM least privilege is the #1 AWS certification concept.'
+  },
+  {
+    id: 'supabase-rls-check',
+    match: cmd => /^supabase\s+(db\s+push|db\s+reset|migration\s+up|start)/.test(cmd),
+    severity: 'warning',
+    flag: '⚠️ Supabase schema change — run RLS scan',
+    tip: 'After pushing migrations, always verify RLS policies are in place. Click "Scan RLS" in the Security tab to detect exposed tables, missing policies, or USING (true) open access rules.'
+  },
+  {
+    id: 'supabase-disable-rls',
+    match: cmd => /disable\s+row\s+level\s+security|alter\s+table.*disable\s+rls/i.test(cmd),
+    severity: 'danger',
+    flag: '🚨 Disabling Row Level Security',
+    tip: 'Disabling RLS exposes the entire table to any authenticated (or anonymous) user. Every Supabase table in production must have RLS enabled with explicit policies. This is a critical data breach risk.'
+  },
+  {
+    id: 'supabase-anon-key',
+    match: cmd => /SUPABASE_SERVICE_ROLE|service_role/.test(cmd) && /\.env|export|echo/.test(cmd),
+    severity: 'danger',
+    flag: '🚨 Supabase service role key detected in command',
+    tip: 'The service_role key bypasses RLS completely. It must NEVER be used in frontend code or committed to git. Only use it server-side in environment variables. Treat it like a root database password.'
+  },
+  {
+    id: 'npm-audit-missing',
+    match: (cmd, history) => /^npm\s+(install|i|update)\b/.test(cmd) && !history.slice(-3).some(h => h.cmd === 'npm audit'),
+    severity: 'warning',
+    flag: '⚠️ Run npm audit after installing/updating packages',
+    tip: 'Supply chain attacks via npm packages are the #1 way production apps get compromised. Run "npm audit" and "npm audit fix" after every install. CompTIA Security+ covers software supply chain security.'
+  },
+  {
+    id: 'git-commit-no-message',
+    match: cmd => /git commit -m ["']\.*["']/.test(cmd) || /git commit -m ["']\s*["']/.test(cmd),
+    severity: 'warning',
+    flag: '⚠️ Meaningless commit message',
+    tip: 'Commit messages are the permanent record of why code changed. Write: what changed and why. Bad: "fix", ".", "wip". Good: "Add email validation to signup form". Future you will thank present you.'
+  },
+  {
+    id: 'node-no-nvm',
+    match: (cmd, history) => /^node\s/.test(cmd) && !history.some(h => /nvm use|nvm install/.test(h.cmd)),
+    severity: 'warning',
+    flag: '⚠️ Node.js running without version manager',
+    tip: 'Install nvm (Node Version Manager) to switch Node versions per project. Run: "nvm use" in any project that has a .nvmrc file. Prevents "works on my machine" issues across teams and CI.'
+  },
+  {
+    id: 'console-log-prod',
+    match: cmd => /node\s+(server|app|index|main)\.(js|ts)/.test(cmd),
+    severity: 'warning',
+    flag: '⚠️ Running server — check for console.log statements',
+    tip: 'console.log in production leaks sensitive data to server logs and slows performance. Use a proper logger (pino, winston) with log levels. Set LOG_LEVEL=error in production. Remove debug logs before deploying.'
   }
 ];
 
@@ -400,7 +449,168 @@ app.delete('/prompts/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/health', (req, res) => res.json({ ok: true, clients: clients.size }));
+// ── RLS SCANNER ──────────────────────────────────────────────────────────────
+app.post('/scan-rls', async (req, res) => {
+  const url   = req.body.supabaseUrl  || process.env.SUPABASE_URL;
+  const key   = req.body.serviceKey   || process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) return res.status(400).json({ error: 'SUPABASE_URL and SUPABASE_SERVICE_KEY required. Add to your .env or pass in the request.' });
+
+  try {
+    const headers = { 'apikey': key, 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' };
+
+    // Get all public tables
+    const tablesRes = await fetch(`${url}/rest/v1/rpc/get_tables`, { method: 'POST', headers, body: '{}' }).catch(() => null);
+
+    // Fall back to information_schema query via SQL endpoint
+    const sqlRes = await fetch(`${url}/rest/v1/rpc/exec_sql`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ query: `
+        SELECT t.table_name,
+               COALESCE(array_agg(p.policyname) FILTER (WHERE p.policyname IS NOT NULL), '{}') AS policies,
+               obj_description(c.oid) AS rls_enabled
+        FROM information_schema.tables t
+        LEFT JOIN pg_policies p ON p.tablename = t.table_name AND p.schemaname = 'public'
+        LEFT JOIN pg_class c ON c.relname = t.table_name
+        WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+        GROUP BY t.table_name, c.oid, c.relrowsecurity
+        ORDER BY t.table_name
+      ` })
+    }).catch(() => null);
+
+    // Direct pg_catalog query — most reliable
+    const pgRes = await fetch(`${url}/rest/v1/`, { headers });
+    const catalogRes = await fetch(`${url}/rest/v1/rpc/`, { method: 'GET', headers });
+
+    // Use Supabase pg meta API (available on all projects)
+    const [tabRes, polRes] = await Promise.all([
+      fetch(`${url}/pg/tables?schema=public`, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }),
+      fetch(`${url}/pg/policies?schema=public`, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } })
+    ]);
+
+    const issues = [];
+    let tables = [], policies = [];
+
+    if (tabRes.ok && polRes.ok) {
+      tables   = await tabRes.json();
+      policies = await polRes.json();
+
+      tables.forEach(t => {
+        const tPolicies = policies.filter(p => p.table === t.name);
+        if (!t.rls_enabled) {
+          issues.push({ table: t.name, severity: 'critical', issue: 'RLS is DISABLED', detail: `Table "${t.name}" has no Row Level Security. Every authenticated user can read, write, and delete all rows.` });
+        } else if (tPolicies.length === 0) {
+          issues.push({ table: t.name, severity: 'high', issue: 'RLS enabled but NO policies', detail: `Table "${t.name}" has RLS enabled but zero policies — this blocks ALL access including your own app.` });
+        } else {
+          tPolicies.forEach(p => {
+            if (p.definition && /using\s*\(\s*true\s*\)/i.test(p.definition)) {
+              issues.push({ table: t.name, severity: 'critical', issue: `Open policy: "${p.name}"`, detail: `Policy uses USING (true) — allows any authenticated user to access all rows in "${t.name}". Add auth.uid() = user_id check.` });
+            }
+          });
+        }
+      });
+    } else {
+      return res.status(502).json({ error: 'Could not connect to Supabase. Check your URL and service key.' });
+    }
+
+    const result = { tables: tables.length, policies: policies.length, issues, scannedAt: new Date().toISOString() };
+    broadcast({ type: 'rls_scan', result });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── SECRET FILE SCANNER ───────────────────────────────────────────────────────
+app.post('/scan-secrets', (req, res) => {
+  const projectPath = req.body.path || process.env.PROJECT_PATH || process.cwd();
+  const findings = [];
+  const dangerPatterns = [
+    { re: /sk-[a-zA-Z0-9]{40,}/g,                       label: 'OpenAI API key' },
+    { re: /sk-ant-[a-zA-Z0-9\-_]{90,}/g,                label: 'Anthropic API key' },
+    { re: /eyJ[a-zA-Z0-9_-]{50,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/g, label: 'JWT token' },
+    { re: /AKIA[A-Z0-9]{16}/g,                           label: 'AWS Access Key ID' },
+    { re: /service_role[^a-z].*eyJ/g,                    label: 'Supabase service role key' },
+    { re: /password\s*=\s*["'][^"']{6,}/gi,              label: 'Hardcoded password' },
+    { re: /api.?key\s*[=:]\s*["'][a-zA-Z0-9_\-]{16,}/gi, label: 'Hardcoded API key' },
+  ];
+  const ignoreDirs = new Set(['node_modules', '.git', '.next', 'dist', 'build', '__pycache__']);
+  const ignoreFiles = new Set(['.env', '.env.local', '.env.example']);
+
+  function scanDir(dir, depth = 0) {
+    if (depth > 5) return;
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (ignoreDirs.has(entry.name)) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { scanDir(full, depth + 1); continue; }
+      if (ignoreFiles.has(entry.name)) continue;
+      if (!/\.(js|ts|tsx|jsx|py|rb|go|env\.|json|yaml|yml|sh|md)$/.test(entry.name)) continue;
+      let content;
+      try { content = fs.readFileSync(full, 'utf8'); } catch { continue; }
+      dangerPatterns.forEach(({ re, label }) => {
+        re.lastIndex = 0;
+        if (re.test(content)) {
+          const relPath = path.relative(projectPath, full);
+          if (!findings.some(f => f.file === relPath && f.label === label)) {
+            findings.push({ file: relPath, label, severity: 'critical' });
+          }
+        }
+      });
+    }
+  }
+
+  scanDir(projectPath);
+  broadcast({ type: 'secret_scan', findings });
+  res.json({ findings, scannedAt: new Date().toISOString() });
+});
+
+// ── FILE WATCHER ──────────────────────────────────────────────────────────────
+let watcherActive = false;
+const AUTH_FILE_PATTERNS = /\/(auth|middleware|supabase|client|session|token|jwt|login|signup|protect)\.(ts|js|tsx|jsx)$/i;
+
+app.post('/watch/start', (req, res) => {
+  const watchPath = req.body.path || process.env.PROJECT_PATH;
+  if (!watchPath) return res.status(400).json({ error: 'path required' });
+  if (watcherActive) return res.json({ ok: true, message: 'already watching' });
+
+  try {
+    fs.watch(watchPath, { recursive: true }, (event, filename) => {
+      if (!filename || !AUTH_FILE_PATTERNS.test(filename)) return;
+      const fullPath = path.join(watchPath, filename);
+      let content;
+      try { content = fs.readFileSync(fullPath, 'utf8'); } catch { return; }
+      if (content.length > 8000) content = content.slice(0, 8000) + '\n... (truncated)';
+
+      broadcast({
+        type: 'file_change',
+        filename,
+        preview: content.slice(0, 300)
+      });
+
+      // Auto-send to Claude for security review
+      const { systemPrompt } = buildPrompt(`[file changed] ${filename}`, content, 0, [], false);
+      const secPrompt = systemPrompt + '\n\nFocus specifically on: auth flows, RLS bypass risks, missing session checks, exposed service keys, and broken access control. Flag every concern, no matter how small.';
+      streamClaude(secPrompt,
+        `Security review of changed file: ${filename}\n\nContent:\n${content}`,
+        chunk => broadcast({ type: 'chunk', text: chunk }),
+        ()    => broadcast({ type: 'done', exitCode: 0 })
+      );
+      broadcast({ type: 'start', cardType: 'command', label: `🔍 Security review: ${filename}`, exitCode: 0 });
+    });
+    watcherActive = true;
+    res.json({ ok: true, watching: watchPath });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/watch/stop', (req, res) => {
+  watcherActive = false;
+  res.json({ ok: true });
+});
+
+app.get('/health', (req, res) => res.json({ ok: true, clients: clients.size, watching: watcherActive }));
 
 const PORT = process.env.PORT || 3737;
 server.listen(PORT, () => {
