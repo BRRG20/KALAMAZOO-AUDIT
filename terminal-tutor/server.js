@@ -323,7 +323,6 @@ FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
 [Give the EXACT text to paste into Claude next if something important is missing. Format: "Tell Claude: [exact text]". Skip if nothing urgent.]
 
 RULES:
-- Each section emoji MUST be on its own line. Put content on the line BELOW the header, never on the same line.
 - Never be long-winded. Digestible beats comprehensive.
 - Explain every technical term you use
 - Always be encouraging
@@ -460,17 +459,11 @@ app.post('/explain', async (req, res) => {
     return;
   }
 
-  // ── Cache: inject known terms to avoid re-explaining them ────────────────
-  const knownTerms = getCachedTerms(command);
-  let { systemPrompt, userMsg } = buildPrompt(command, output, exitCode, patterns, false);
-  if (knownTerms.length > 0) {
-    cacheStats.termHits += knownTerms.length;
-    const termNote = knownTerms.map(t => `**${t.term}** — ${t.def}`).join('\n');
-    systemPrompt += `\n\nThe user already knows these terms — do NOT re-explain them in KEY TERMS:\n${termNote}`;
-  }
-
   // ── Call Claude ───────────────────────────────────────────────────────────
+  const knownTerms = getCachedTerms(command);
+  if (knownTerms.length > 0) cacheStats.termHits += knownTerms.length;
   cacheStats.apiCalls++;
+  const { systemPrompt, userMsg } = buildPrompt(command, output, exitCode, patterns, false);
   let fullResponse = '';
   await streamClaude(systemPrompt, userMsg,
     chunk => { broadcast({ type: 'chunk', text: chunk }); fullResponse += chunk; },
