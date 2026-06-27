@@ -30,6 +30,52 @@ function savePrompts() {
   fs.writeFileSync(PROMPTS_FILE, JSON.stringify(savedPrompts, null, 2));
 }
 
+// ── CACHE ─────────────────────────────────────────────────────────────────────
+const CACHE_FILE = path.join(__dirname, 'cache.json');
+let cache = { commands: {}, terms: {} };
+try { cache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')); } catch { cache = { commands: {}, terms: {} }; }
+
+const cacheStats = { hits: 0, apiCalls: 0, termHits: 0 };
+
+function saveCache() {
+  fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
+}
+
+function cacheKey(cmd) {
+  return cmd.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function getCachedCommand(cmd) {
+  return cache.commands[cacheKey(cmd)] || null;
+}
+
+function setCachedCommand(cmd, response) {
+  const key = cacheKey(cmd);
+  cache.commands[key] = { response, ts: Date.now(), hits: 0 };
+  saveCache();
+}
+
+function getCachedTerms(cmd) {
+  const words = cmd.toLowerCase().split(/\s+/);
+  return words
+    .filter(w => cache.terms[w])
+    .map(w => ({ term: w, def: cache.terms[w] }));
+}
+
+function setCachedTerms(text) {
+  const regex = /\*\*([^*\n]{2,60})\*\*\s*[—\-–:]\s*([^\n]{10,250})/g;
+  let match; let added = false;
+  while ((match = regex.exec(text)) !== null) {
+    const term = match[1].trim().toLowerCase();
+    const def  = match[2].trim().replace(/\.$/, '');
+    if (!cache.terms[term]) { cache.terms[term] = def; added = true; }
+  }
+  if (added) saveCache();
+}
+
+// Commands that produce the same result every time — skip Claude on success
+const SKIP_ON_SUCCESS = /^(git\s+(status|log|diff|branch|remote|tag|show)|ls|ll|la|pwd|echo|cat|clear|which|whoami|hostname|date|uname|env|printenv|type|alias|history)(\s|$)/i;
+
 function extractAndSaveTerms(text) {
   const regex = /\*\*([^*\n]{2,60})\*\*\s*[—\-–:]\s*([^\n]{10,250})/g;
   let match;
@@ -308,7 +354,7 @@ async function streamClaude(systemPrompt, userMsg, onChunk, onDone) {
         'x-api-key': apiKey
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 2000,
         stream: true,
         system: systemPrompt,
@@ -349,7 +395,8 @@ async function streamClaude(systemPrompt, userMsg, onChunk, onDone) {
     }
     extractAndSaveTerms(fullText);
     extractAndSaveNextPrompt(fullText);
-    onDone();
+    setCachedTerms(fullText);
+    onDone(fullText);
   } catch (err) {
     onChunk(`\nConnection error: ${err.message}`);
     onDone();
@@ -397,12 +444,40 @@ app.post('/explain', async (req, res) => {
 
   if (patterns.length > 0) broadcast({ type: 'patterns', patterns });
 
+  // Skip Claude entirely for boring successful commands
+  if (exitCode === 0 && SKIP_ON_SUCCESS.test(command) && patterns.length === 0) return;
+
   broadcast({ type: 'start', cardType: 'command', label: command, exitCode });
 
-  const { systemPrompt, userMsg } = buildPrompt(command, output, exitCode, patterns, false);
+  // ── Cache: exact command hit ──────────────────────────────────────────────
+  const cached = getCachedCommand(command);
+  if (cached && exitCode === 0) {
+    cacheStats.hits++;
+    cache.commands[cacheKey(command)].hits++;
+    console.log(`[cache hit] ${command}`);
+    broadcast({ type: 'chunk', text: cached.response });
+    broadcast({ type: 'done', exitCode, fromCache: true });
+    return;
+  }
+
+  // ── Cache: inject known terms to avoid re-explaining them ────────────────
+  const knownTerms = getCachedTerms(command);
+  let { systemPrompt, userMsg } = buildPrompt(command, output, exitCode, patterns, false);
+  if (knownTerms.length > 0) {
+    cacheStats.termHits += knownTerms.length;
+    const termNote = knownTerms.map(t => `**${t.term}** — ${t.def}`).join('\n');
+    systemPrompt += `\n\nThe user already knows these terms — do NOT re-explain them in KEY TERMS:\n${termNote}`;
+  }
+
+  // ── Call Claude ───────────────────────────────────────────────────────────
+  cacheStats.apiCalls++;
+  let fullResponse = '';
   await streamClaude(systemPrompt, userMsg,
-    chunk => broadcast({ type: 'chunk', text: chunk }),
-    ()    => broadcast({ type: 'done', exitCode })
+    chunk => { broadcast({ type: 'chunk', text: chunk }); fullResponse += chunk; },
+    ()    => {
+      broadcast({ type: 'done', exitCode });
+      if (exitCode === 0 && fullResponse.length > 50) setCachedCommand(command, fullResponse);
+    }
   );
 });
 
@@ -634,6 +709,20 @@ app.post('/watch/start', (req, res) => {
 app.post('/watch/stop', (req, res) => {
   watcherActive = false;
   res.json({ ok: true });
+});
+
+app.get('/cache-stats', (req, res) => {
+  const total = cacheStats.hits + cacheStats.apiCalls;
+  const savedCalls = cacheStats.hits;
+  const pct = total > 0 ? Math.round((savedCalls / total) * 100) : 0;
+  res.json({
+    ...cacheStats,
+    total,
+    hitRate: `${pct}%`,
+    cachedCommands: Object.keys(cache.commands).length,
+    cachedTerms:    Object.keys(cache.terms).length,
+    estimatedSaved: `~$${(savedCalls * 0.0008).toFixed(4)}`
+  });
 });
 
 app.get('/health', (req, res) => res.json({ ok: true, clients: clients.size, watching: watcherActive }));

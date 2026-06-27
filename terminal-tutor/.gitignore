@@ -3,3 +3,5 @@ node_modules/
 *.log
 glossary.json
 prompts.json
+cache.json
+.env
