@@ -474,7 +474,18 @@ RULES:
   return { systemPrompt, userMsg };
 }
 
-async function streamClaude(systemPrompt, userMsg, onChunk, onDone) {
+function selectModel(isQuestion, cmd, exitCode, patterns) {
+  if (exitCode !== 0) return 'claude-sonnet-4-6';
+  if (patterns && patterns.length > 0) return 'claude-sonnet-4-6';
+  if (isQuestion) {
+    const complex = /debug|fix|error|why|how does|explain|architect|refactor|security|deploy|broken|wrong|fail/i;
+    if (cmd.length > 80 || complex.test(cmd)) return 'claude-sonnet-4-6';
+    return 'claude-haiku-4-5-20251001';
+  }
+  return 'claude-haiku-4-5-20251001';
+}
+
+async function streamClaude(systemPrompt, userMsg, model, onChunk, onDone) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     onChunk('⚠️ No ANTHROPIC_API_KEY found.\n\nRun this in your terminal:\nexport ANTHROPIC_API_KEY="your-key-here"\n\nGet your key at: console.anthropic.com');
@@ -491,7 +502,7 @@ async function streamClaude(systemPrompt, userMsg, onChunk, onDone) {
         'x-api-key': apiKey
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: model,
         max_tokens: 2000,
         stream: true,
         system: systemPrompt,
@@ -552,8 +563,9 @@ wss.on('connection', (ws) => {
       const msg = JSON.parse(raw);
       if (msg.type === 'question') {
         const { systemPrompt, userMsg } = buildPrompt(msg.text, '', 0, [], true);
+        const model = selectModel(true, msg.text, 0, []);
         broadcast({ type: 'start', cardType: 'question', label: msg.text });
-        await streamClaude(systemPrompt, userMsg,
+        await streamClaude(systemPrompt, userMsg, model,
           chunk => broadcast({ type: 'chunk', text: chunk }),
           ()    => broadcast({ type: 'done' })
         );
@@ -602,8 +614,9 @@ app.post('/explain', async (req, res) => {
   if (knownTerms.length > 0) cacheStats.termHits += knownTerms.length;
   cacheStats.apiCalls++;
   const { systemPrompt, userMsg } = buildPrompt(command, output, exitCode, patterns, false);
+  const model = selectModel(false, command, exitCode, patterns);
   let fullResponse = '';
-  await streamClaude(systemPrompt, userMsg,
+  await streamClaude(systemPrompt, userMsg, model,
     chunk => { broadcast({ type: 'chunk', text: chunk }); fullResponse += chunk; },
     ()    => {
       broadcast({ type: 'done', exitCode });
