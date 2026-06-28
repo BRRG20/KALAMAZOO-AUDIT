@@ -8,7 +8,7 @@ else
   echo -e "${_R}⚠  Start the server first: node server.js${_X}"
 fi
 
-_TUTOR_SKIP='ls|ll|la|pwd|clear|history|exit|cd|man|source|tutor|ask|explain'
+_TUTOR_SKIP='ls|ll|la|pwd|clear|history|exit|cd|man|source|tutor|ask|explain|open|cursor|code'
 
 # Commands whose output is worth capturing for security/teaching context
 _TUTOR_CAPTURE='npm|npx|node|git|supabase|terraform|kubectl|docker|python|python3|pip|aws|psql|curl|wget'
