@@ -499,13 +499,14 @@ async function streamClaude(systemPrompt, userMsg, model, onChunk, onDone) {
       headers: {
         'Content-Type': 'application/json',
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
         'x-api-key': apiKey
       },
       body: JSON.stringify({
         model: model,
         max_tokens: 2000,
         stream: true,
-        system: systemPrompt,
+        system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: userMsg }]
       })
     });
