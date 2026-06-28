@@ -73,8 +73,8 @@ function setCachedTerms(text) {
   if (added) saveCache();
 }
 
-// Commands that produce the same result every time — skip Claude on success
-const SKIP_ON_SUCCESS = /^(git\s+(status|log|diff|branch|remote|tag|show)|ls|ll|la|pwd|echo|cat|clear|which|whoami|hostname|date|uname|env|printenv|type|alias|history)(\s|$)/i;
+// Commands with zero educational value — skip Claude on success
+const SKIP_ON_SUCCESS = /^(ls|ll|la|pwd|clear|whoami|hostname|date|uname|echo|which|type|alias|history|env|printenv|open|cursor|code\s+\.|source|ping|brew\s+(update|upgrade|list|info))(\s|$)/i;
 
 function extractAndSaveTerms(text) {
   const regex = /\*\*([^*\n]{2,60})\*\*\s*[—\-–:]\s*([^\n]{10,250})/g;

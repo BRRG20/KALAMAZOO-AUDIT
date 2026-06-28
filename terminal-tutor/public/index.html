@@ -1364,14 +1364,23 @@ function esc(s) {
 }
 
 const SEC_DEFS = [
-  { emoji: '⚡',  color: 'var(--text)'   },
-  { emoji: '📖',  color: 'var(--purple)' },
-  { emoji: '✅',  color: 'var(--green)'  },
-  { emoji: '❌',  color: 'var(--red)'    },
-  { emoji: '💡',  color: 'var(--amber)'  },
-  { emoji: '🔐',  color: 'var(--red)'    },
-  { emoji: '➡️', color: 'var(--blue)'   },
+  { emoji: '⚡',  color: 'var(--text)',   keywords: ['WHAT JUST HAPPENED','WHAT THIS MEANS','WHAT WENT WRONG'] },
+  { emoji: '📖',  color: 'var(--purple)', keywords: ['KEY TERMS'] },
+  { emoji: '✅',  color: 'var(--green)',  keywords: ['WHY THIS IS GOOD','WHEN TO USE'] },
+  { emoji: '❌',  color: 'var(--red)',    keywords: ['WHAT WENT WRONG','COMMON MISTAKE'] },
+  { emoji: '💡',  color: 'var(--amber)',  keywords: ['BEST PRACTICE'] },
+  { emoji: '🔐',  color: 'var(--red)',    keywords: ['SECURITY'] },
+  { emoji: '➡️', color: 'var(--blue)',   keywords: ['NEXT PROMPT'] },
 ];
+
+function isSectionHeader(line) {
+  const trimmed = line.trimStart();
+  const def = SEC_DEFS.find(s => trimmed.startsWith(s.emoji));
+  if (!def) return null;
+  const upper = trimmed.toUpperCase();
+  if (def.keywords.some(k => upper.includes(k))) return def;
+  return null;
+}
 
 function formatInline(text) {
   return text
@@ -1381,13 +1390,12 @@ function formatInline(text) {
 }
 
 function renderMarkdown(raw) {
-  // Split into lines, group by section headers
   const lines = raw.split('\n');
   const blocks = [];
   let current = null;
 
   for (const line of lines) {
-    const def = SEC_DEFS.find(s => line.trimStart().startsWith(s.emoji));
+    const def = isSectionHeader(line);
     if (def) {
       if (current) blocks.push(current);
       current = { color: def.color, header: line.trim(), body: [] };
